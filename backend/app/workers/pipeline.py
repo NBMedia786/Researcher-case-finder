@@ -4,6 +4,7 @@ from app.models import Article, Case
 from app.sources.base import IngestedArticle
 from app.extraction.extractor import extract_case_fields
 from app.dedup.matcher import find_matching_case, normalize_name, merge_extracted_into_case
+from app.scoring.score import compute_content_score
 
 def _parse_date(s: str | None) -> date_cls | None:
     if not s:
@@ -72,12 +73,14 @@ def process_article(db: Session, ia: IngestedArticle) -> dict:
             summary=data.get("summary"),
             status="new",
         )
+        case.content_score = compute_content_score(data)
         db.add(case)
         db.flush()
         created = True
     else:
         case = match
         merge_extracted_into_case(case, data)
+        case.content_score = compute_content_score(data)
 
     article.case_id = case.id
     article.extraction_status = "extracted"

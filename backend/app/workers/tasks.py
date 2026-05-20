@@ -1,11 +1,13 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import func
 from app.workers.celery_app import celery_app
 from app.workers.pipeline import process_article
 from app.db import SessionLocal
-from app.models import Source
+from app.models import Source, Case
 from app.sources.newsapi import NewsAPISource
 from app.sources.doj import DOJSource
 from app.config import settings
+from app.notifications.slack import post_summary
 
 SOURCE_REGISTRY = {
     "newsapi": NewsAPISource,
@@ -75,3 +77,17 @@ def run_full_pipeline():
 @celery_app.task
 def run_light_pipeline():
     return run_full_pipeline()
+
+@celery_app.task
+def post_daily_summary():
+    db = SessionLocal()
+    try:
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        new_count = db.query(func.count(Case.id)).filter(Case.created_at >= since).scalar() or 0
+        high = (db.query(func.count(Case.id))
+                  .filter(Case.created_at >= since, Case.content_score >= 4).scalar() or 0)
+    finally:
+        db.close()
+    base = settings.frontend_url
+    post_summary(f"NB Research: {new_count} new cases overnight, {high} high-priority. {base}/inbox")
+    return {"new": new_count, "high": high}

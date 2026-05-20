@@ -29,4 +29,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.tasks.run_light_pipeline",
         "schedule": crontab(minute="*/30", hour="14-22"),
     },
+    "daily_summary": {
+        "task": "app.workers.tasks.post_daily_summary",
+        "schedule": crontab(hour=13, minute=30),
+    },
 }
