@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>DOJ News</title>
+  <item>
+    <title>Defendant sentenced to life for first-degree murder</title>
+    <link>https://www.justice.gov/news/press-release/abc-123</link>
+    <pubDate>Mon, 19 May 2026 12:00:00 GMT</pubDate>
+    <description>John Doe, 35, was sentenced to life in prison...</description>
+  </item>
+  <item>
+    <title>Press release about something else entirely</title>
+    <link>https://www.justice.gov/news/press-release/xyz-999</link>
+    <pubDate>Mon, 19 May 2026 11:00:00 GMT</pubDate>
+    <description>Indictment announced...</description>
+  </item>
+</channel>
+</rss>
