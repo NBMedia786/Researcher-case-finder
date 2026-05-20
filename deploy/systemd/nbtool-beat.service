@@ -1,0 +1,16 @@
+[Unit]
+Description=NB Research Celery Beat
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=nbtool
+Group=nbtool
+WorkingDirectory=/opt/nbtool/backend
+EnvironmentFile=/opt/nbtool/backend/.env
+ExecStart=/opt/nbtool/backend/.venv/bin/celery -A app.workers.celery_app beat --loglevel=info
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

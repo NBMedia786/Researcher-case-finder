@@ -1,0 +1,21 @@
+research.nbmediaproductions.com {
+    # Frontend
+    handle {
+        reverse_proxy 127.0.0.1:3000
+    }
+
+    # API
+    handle_path /api/* {
+        rewrite * /api{uri}
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    handle /health {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    encode gzip
+    log {
+        output file /var/log/caddy/nbtool.log
+    }
+}

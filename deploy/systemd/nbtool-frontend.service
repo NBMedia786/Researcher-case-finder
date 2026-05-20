@@ -1,0 +1,16 @@
+[Unit]
+Description=NB Research Frontend (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=nbtool
+Group=nbtool
+WorkingDirectory=/opt/nbtool/frontend
+EnvironmentFile=/opt/nbtool/frontend/.env.local
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -p 3000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

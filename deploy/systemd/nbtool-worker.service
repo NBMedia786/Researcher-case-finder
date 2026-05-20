@@ -1,0 +1,16 @@
+[Unit]
+Description=NB Research Celery Worker
+After=network.target redis-server.service postgresql.service
+
+[Service]
+Type=simple
+User=nbtool
+Group=nbtool
+WorkingDirectory=/opt/nbtool/backend
+EnvironmentFile=/opt/nbtool/backend/.env
+ExecStart=/opt/nbtool/backend/.venv/bin/celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
