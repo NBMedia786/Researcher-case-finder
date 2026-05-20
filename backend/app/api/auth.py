@@ -6,6 +6,7 @@ from app.models import User
 from app.auth.google_oauth import verify_id_token, EmailDomainNotAllowed
 from app.auth.jwt_session import create_session_token
 from app.schemas.auth import LoginRequest, LoginResponse, UserOut
+from app.auth.dependencies import current_user
 from app.config import settings
 
 router = APIRouter()
@@ -49,3 +50,8 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 def logout(response: Response):
     response.delete_cookie("session")
     return {"ok": True}
+
+
+@router.get("/me", response_model=UserOut)
+def me(user: User = Depends(current_user)):
+    return UserOut.model_validate(user)
