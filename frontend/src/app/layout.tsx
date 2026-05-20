@@ -12,7 +12,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <script src="https://accounts.google.com/gsi/client" async defer></script>
+        {children}
+      </body>
     </html>
   );
 }
