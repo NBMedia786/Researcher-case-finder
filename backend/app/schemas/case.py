@@ -28,3 +28,42 @@ class CaseListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class CaseArticle(BaseModel):
+    id: UUID
+    url: str
+    title: Optional[str]
+    source_name: str
+    source_type: str
+    published_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class CaseDetail(CaseListItem):
+    victims: list
+    charges: list
+    docket_number: Optional[str]
+    judge_name: Optional[str]
+    court_name: Optional[str]
+    prosecuting_office: Optional[str]
+    investigating_agency: Optional[str]
+    sentence_years: Optional[int]
+    notes: Optional[str]
+    articles: list[CaseArticle]
+
+
+class CaseUpdate(BaseModel):
+    defendant_name: Optional[str] = None
+    defendant_age: Optional[int] = None
+    defendant_hometown: Optional[str] = None
+    court_name: Optional[str] = None
+    county: Optional[str] = None
+    state: Optional[str] = None
+    docket_number: Optional[str] = None
+    judge_name: Optional[str] = None
+    prosecuting_office: Optional[str] = None
+    investigating_agency: Optional[str] = None
+    notes: Optional[str] = None
