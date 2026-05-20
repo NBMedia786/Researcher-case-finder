@@ -1,12 +1,26 @@
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from uuid import UUID as UUID_T
+from uuid import UUID as UUID_T, UUID
+from pydantic import BaseModel as _BM
 from app.db import get_db
-from app.models import Case, Article
+from app.models import Case, Article, AuditLog
 from app.auth.dependencies import current_user
 from app.schemas.case import CaseListResponse, CaseListItem, CaseDetail, CaseArticle, CaseUpdate
+
+
+def _as_uuid(val) -> UUID | None:
+    """Coerce a string or UUID to a UUID object, or return None."""
+    if val is None:
+        return None
+    if isinstance(val, UUID):
+        return val
+    try:
+        return UUID(str(val))
+    except (ValueError, AttributeError):
+        return None
 
 router = APIRouter()
 
@@ -79,6 +93,45 @@ def update_case(case_id: UUID_T, body: CaseUpdate,
         if field == "state" and value:
             value = value.upper()[:2]
         setattr(c, field, value)
+    db.commit()
+    db.refresh(c)
+    return get_case(case_id, db, user)
+
+
+class TransitionRequest(_BM):
+    action: str
+    note: str | None = None
+
+
+ACTION_MAP = {
+    "approve": "approved",
+    "reject": "rejected",
+    "needs_info": "reviewing",
+    "mark_foia_filed": "foia_filed",
+    "mark_records_received": "records_received",
+    "archive": "archived",
+}
+
+
+@router.post("/{case_id}/transition", response_model=CaseDetail)
+def transition_case(case_id: UUID_T, body: TransitionRequest,
+                    db: Session = Depends(get_db), user=Depends(current_user)):
+    new_status = ACTION_MAP.get(body.action)
+    if new_status is None:
+        raise HTTPException(status_code=400, detail="invalid action")
+    c = db.query(Case).filter(Case.id == case_id).one_or_none()
+    if c is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    c.status = new_status
+    c.reviewed_by = _as_uuid(user.id)
+    c.reviewed_at = datetime.now(timezone.utc)
+    if body.note:
+        c.notes = (c.notes + "\n" if c.notes else "") + body.note
+    db.add(AuditLog(
+        user_id=_as_uuid(user.id), action=f"case_{body.action}",
+        entity_type="case", entity_id=case_id,
+        extra={"new_status": new_status, "note": body.note},
+    ))
     db.commit()
     db.refresh(c)
     return get_case(case_id, db, user)
