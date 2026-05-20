@@ -1,9 +1,77 @@
+from datetime import datetime, timezone
 from app.workers.celery_app import celery_app
+from app.workers.pipeline import process_article
+from app.db import SessionLocal
+from app.models import Source
+from app.sources.newsapi import NewsAPISource
+from app.sources.doj import DOJSource
+from app.config import settings
+
+SOURCE_REGISTRY = {
+    "newsapi": NewsAPISource,
+    "doj": DOJSource,
+}
+
+def _build_source(row: Source):
+    cls = SOURCE_REGISTRY.get(row.name)
+    if cls is None:
+        return None
+    cfg = dict(row.config or {})
+    # Inject API keys from settings
+    if row.name == "newsapi":
+        cfg["api_key"] = cfg.get("api_key") or settings.newsapi_key
+    return cls(config=cfg)
+
+@celery_app.task(bind=True, max_retries=3)
+def ingest_source(self, source_id: str):
+    db = SessionLocal()
+    try:
+        row = db.query(Source).filter(Source.id == source_id, Source.is_active).one_or_none()
+        if row is None:
+            return {"skipped": True}
+        src = _build_source(row)
+        if src is None:
+            return {"skipped": True, "reason": "no handler"}
+        fetched, extracted = 0, 0
+        for ia in src.fetch():
+            fetched += 1
+            try:
+                process_article(db, ia)
+                extracted += 1
+            except Exception:
+                db.rollback()
+                continue
+        row.items_fetched_24h = fetched
+        row.items_extracted_24h = extracted
+        row.last_run_at = datetime.now(timezone.utc)
+        row.last_success_at = datetime.now(timezone.utc)
+        row.consecutive_failures = 0
+        db.commit()
+        return {"fetched": fetched, "extracted": extracted}
+    except Exception as e:
+        try:
+            row = db.query(Source).filter(Source.id == source_id).one_or_none()
+            if row:
+                row.consecutive_failures = (row.consecutive_failures or 0) + 1
+                row.last_run_at = datetime.now(timezone.utc)
+                db.commit()
+        finally:
+            db.rollback()
+        raise self.retry(exc=e, countdown=60) from e
+    finally:
+        db.close()
 
 @celery_app.task
 def run_full_pipeline():
-    return "full pipeline triggered"
+    db = SessionLocal()
+    try:
+        ids = [str(s.id) for s in db.query(Source).filter(Source.is_active).all()]
+    finally:
+        db.close()
+    for sid in ids:
+        ingest_source.delay(sid)
+    return {"dispatched": len(ids)}
 
 @celery_app.task
 def run_light_pipeline():
-    return "light pipeline triggered"
+    return run_full_pipeline()
