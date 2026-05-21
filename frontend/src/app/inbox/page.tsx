@@ -32,6 +32,7 @@ export default function InboxPage() {
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastStatusRef = useRef<RunStatus | null>(null);
+  const lastNewCasesRef = useRef<number>(0);
 
   useEffect(() => {
     api.me().then((u) => setUser(u as User)).catch(() => {});
@@ -59,6 +60,11 @@ export default function InboxPage() {
       const data = await api.pipelineStatus();
       setRun(data.run);
       if (data.run) {
+        // Refresh the case list whenever a new case appears during the run
+        if (data.run.total_new_cases > lastNewCasesRef.current) {
+          lastNewCasesRef.current = data.run.total_new_cases;
+          fetchCases();
+        }
         const justFinished = lastStatusRef.current === "running" && data.run.status !== "running";
         lastStatusRef.current = data.run.status;
         if (data.run.status !== "running") {
@@ -169,7 +175,13 @@ export default function InboxPage() {
           <button
             onClick={startPipeline}
             disabled={isRunning}
-            className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2 transition shadow-sm"
+            className={
+              "inline-flex items-center gap-2 text-white text-sm font-semibold rounded-lg px-5 py-2.5 " +
+              "transition-all shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 " +
+              (isRunning
+                ? "bg-slate-400 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700 hover:shadow-lg active:scale-95 focus:ring-blue-500 cursor-pointer")
+            }
           >
             {isRunning ? (
               <>
@@ -237,8 +249,11 @@ export default function InboxPage() {
           {user?.role === "admin" && !status && !state && !q && !isRunning && (
             <button
               onClick={startPipeline}
-              className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg px-4 py-2 transition"
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-semibold rounded-lg px-5 py-2.5 transition-all shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer"
             >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
               Run pipeline now
             </button>
           )}

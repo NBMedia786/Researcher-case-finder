@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Iterable
 import httpx
 from app.sources.base import BaseSource, IngestedArticle
+from app.sources.article_scraper import fetch_article_body
 
 MEDIASTACK_URL = "http://api.mediastack.com/v1/news"
 
@@ -20,7 +21,8 @@ class MediaStackSource(BaseSource):
 
     def fetch(self) -> Iterable[IngestedArticle]:
         api_key = self.config.get("api_key")
-        if not api_key:
+        # Skip if no key OR if it's a placeholder from .env.example
+        if not api_key or api_key.startswith("PASTE_"):
             return
         queries = self.config.get("queries") or DEFAULT_QUERIES
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -50,7 +52,10 @@ class MediaStackSource(BaseSource):
                         pub_at = None
                 title = a.get("title") or ""
                 description = a.get("description") or ""
-                raw_text = title + "\n\n" + description
+                snippet = title + "\n\n" + description
+                # Try fetching the full body so the LLM can pull court / judge / docket
+                body = fetch_article_body(a["url"])
+                raw_text = body if body and len(body) > len(snippet) else snippet
                 yield IngestedArticle(
                     url=a["url"],
                     title=title or None,

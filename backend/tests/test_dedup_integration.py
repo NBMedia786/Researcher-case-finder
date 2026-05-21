@@ -26,7 +26,10 @@ def test_find_matching_case_exact(db):
     m = find_matching_case(db, "JOHN  DOE", date(2026, 5, 20), "TX")
     assert m is not None and m.id == c.id
 
-def test_find_matching_case_outside_window_returns_none(db):
+def test_find_matching_case_outside_window_falls_back_to_name_and_state(db):
+    """Same defendant + same state but dates far apart should still match
+    (one article likely used a fallback date). Researcher can split via UI
+    in the rare case they're actually different cases."""
     c = Case(
         defendant_name="John Doe",
         defendant_name_normalized=normalize_name("John Doe"),
@@ -35,4 +38,17 @@ def test_find_matching_case_outside_window_returns_none(db):
     )
     db.add(c); db.commit()
     m = find_matching_case(db, "John Doe", date(2026, 5, 20), "TX")
+    assert m is not None and m.id == c.id
+
+
+def test_find_matching_case_different_state_returns_none(db):
+    """Same defendant name in a different state is treated as different."""
+    c = Case(
+        defendant_name="John Doe",
+        defendant_name_normalized=normalize_name("John Doe"),
+        sentencing_date=date(2026, 5, 1),
+        state="TX",
+    )
+    db.add(c); db.commit()
+    m = find_matching_case(db, "John Doe", date(2026, 5, 20), "CA")
     assert m is None

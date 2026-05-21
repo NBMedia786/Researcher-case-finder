@@ -24,19 +24,44 @@ def find_matching_case(
     state: str,
     window_days: int = 3,
 ) -> Case | None:
-    """Return existing case if defendant + date(+-window) + state match. Else None."""
-    if not defendant_name or not sentencing_date or not state:
+    """Return existing case for the same defendant + state, else None.
+
+    Strategy:
+    1. First look within `window_days` of `sentencing_date` (the safe case
+       — same defendant, dates close together, almost certainly same event).
+    2. If no date-window match, fall back to (defendant_name + state) only.
+       Same defendant in the same US state being sentenced for two
+       different homicide cases is extremely rare in practice; the more
+       common cause of date mismatch is one article reporting the original
+       sentencing date and another using the article's publish date as a
+       fallback. The researcher can split via the UI if a real duplicate
+       collision happens.
+    """
+    if not defendant_name or not state:
         return None
     nname = normalize_name(defendant_name)
     if not nname:
         return None
-    lo = sentencing_date - timedelta(days=window_days)
-    hi = sentencing_date + timedelta(days=window_days)
+    state_upper = state.upper()
+
+    if sentencing_date is not None:
+        lo = sentencing_date - timedelta(days=window_days)
+        hi = sentencing_date + timedelta(days=window_days)
+        match = (
+            db.query(Case)
+            .filter(Case.defendant_name_normalized == nname)
+            .filter(Case.state == state_upper)
+            .filter(Case.sentencing_date.between(lo, hi))
+            .first()
+        )
+        if match is not None:
+            return match
+
+    # Fall back to defendant + state, no date constraint.
     return (
         db.query(Case)
         .filter(Case.defendant_name_normalized == nname)
-        .filter(Case.state == state.upper())
-        .filter(Case.sentencing_date.between(lo, hi))
+        .filter(Case.state == state_upper)
         .first()
     )
 
