@@ -18,19 +18,25 @@ export default function LoginPage() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Sign-in failed.";
       setError(msg.includes("403")
-        ? "Sign-in restricted to @nbmediaproductions.com accounts."
+        ? "Your email domain isn't on the allow-list. Contact an admin."
         : "Sign-in failed. Try again.");
     }
   }, [router]);
 
   useEffect(() => {
+    // Optional Google-side domain hint (only applied if a single domain
+    // is configured). When multiple domains are allowed, leave it off so
+    // Google shows the user's full account picker and the backend
+    // validates the email domain.
+    const hdHint = process.env.NEXT_PUBLIC_GOOGLE_HOSTED_DOMAIN || undefined;
     const interval = setInterval(() => {
       if (window.google) {
-        window.google.accounts.id.initialize({
+        const initOpts: Record<string, unknown> = {
           client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
-          hd: "nbmediaproductions.com",
           callback: handleCredentialResponse,
-        });
+        };
+        if (hdHint) initOpts.hd = hdHint;
+        window.google.accounts.id.initialize(initOpts);
         window.google.accounts.id.renderButton(
           document.getElementById("gsi-button")!,
           { theme: "outline", size: "large", text: "signin_with", width: 280 }

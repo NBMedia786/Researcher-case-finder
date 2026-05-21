@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     jwt_secret: str = "dev-secret-change-me"
-    allowed_email_domain: str = "nbmediaproductions.com"
+    # Comma-separated list of allowed email domains (e.g. "nbmediaproductions.com,gmail.com").
+    # The OAuth login flow only accepts emails ending in one of these domains.
+    allowed_email_domains: str = "nbmediaproductions.com"
     admin_emails: str = ""
 
     # Vertex AI (Gemini 2.5 Pro on Google Cloud)
