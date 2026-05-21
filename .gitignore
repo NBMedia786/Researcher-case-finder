@@ -16,6 +16,13 @@ out/
 .env.local
 *.local
 
+# Secrets (service account JSON keys, etc.)
+credentials/
+secrets/
+*.pem
+*-key.json
+service-account*.json
+
 # OS
 .DS_Store
 Thumbs.db

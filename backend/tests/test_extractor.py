@@ -29,22 +29,30 @@ VALID_LLM_JSON = {
     "summary": "John Doe sentenced to life without parole for first-degree murder of Maria Lopez.",
 }
 
+
+def _mock_response_with(payload: dict) -> MagicMock:
+    resp = MagicMock()
+    resp.text = json.dumps(payload)
+    return resp
+
+
 def test_extract_returns_structured_fields():
-    mock_msg = MagicMock()
-    mock_msg.content = [MagicMock(text=json.dumps(VALID_LLM_JSON))]
-    with patch("app.extraction.extractor.AnthropicVertex") as MockAnth:
-        MockAnth.return_value.messages.create.return_value = mock_msg
+    fake_model = MagicMock()
+    fake_model.generate_content.return_value = _mock_response_with(VALID_LLM_JSON)
+    with patch("app.extraction.extractor._build_model", return_value=fake_model), \
+         patch("app.extraction.extractor._ensure_initialized"):
         result = extract_case_fields(SAMPLE_TEXT, source_name="Local News")
     assert result["status"] == "extracted"
     assert result["data"]["defendant_name"] == "John Doe"
     assert result["data"]["state"] == "TX"
     assert result["model"] == EXTRACTION_MODEL
 
+
 def test_extract_marks_no_match_when_not_homicide_sentencing():
     bad = dict(VALID_LLM_JSON, is_homicide_sentencing=False)
-    mock_msg = MagicMock()
-    mock_msg.content = [MagicMock(text=json.dumps(bad))]
-    with patch("app.extraction.extractor.AnthropicVertex") as MockAnth:
-        MockAnth.return_value.messages.create.return_value = mock_msg
+    fake_model = MagicMock()
+    fake_model.generate_content.return_value = _mock_response_with(bad)
+    with patch("app.extraction.extractor._build_model", return_value=fake_model), \
+         patch("app.extraction.extractor._ensure_initialized"):
         result = extract_case_fields("unrelated text", source_name="X")
     assert result["status"] == "no_match"

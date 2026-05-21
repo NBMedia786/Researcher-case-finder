@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     allowed_email_domain: str = "nbmediaproductions.com"
     admin_emails: str = ""
 
-    # Vertex AI (Claude on Google Cloud) — replaces direct Anthropic API key.
+    # Vertex AI (Gemini 2.5 Pro on Google Cloud)
     # Auth happens via Google Application Default Credentials (ADC).
     gcp_project_id: str = ""
-    gcp_vertex_region: str = "us-east5"
+    gcp_vertex_region: str = "us-central1"
 
     newsapi_key: str = ""
     mediastack_key: str = ""
