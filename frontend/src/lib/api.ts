@@ -42,4 +42,8 @@ export const api = {
   listUsers: () => call("/api/users"),
   updateUser: (id: string, patch: object) =>
     call(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+
+  runPipeline: () => call<{ total_fetched: number; total_new_cases: number; sources_used: { name: string; fetched: number; new_cases: number }[]; errors: string[] }>(
+    "/api/admin/run-pipeline", { method: "POST" }
+  ),
 };
