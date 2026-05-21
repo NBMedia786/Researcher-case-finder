@@ -1,11 +1,12 @@
 import json
-from anthropic import Anthropic
+from anthropic import AnthropicVertex
 from app.config import settings
 from app.extraction.prompts import (
     EXTRACTION_SYSTEM_PROMPT, EXTRACTION_PROMPT_VERSION, build_user_prompt,
 )
 
-EXTRACTION_MODEL = "claude-haiku-4-5-20251001"
+# Vertex AI uses '@' between model family and version date.
+EXTRACTION_MODEL = "claude-haiku-4-5@20251001"
 
 REQUIRED_KEYS = {
     "is_homicide_sentencing", "defendant_name", "victims", "charges",
@@ -13,8 +14,16 @@ REQUIRED_KEYS = {
 }
 
 def extract_case_fields(article_text: str, source_name: str) -> dict:
-    """Run LLM extraction. Returns dict with keys: status, data, model, prompt_version, error."""
-    client = Anthropic(api_key=settings.anthropic_api_key)
+    """Run LLM extraction via Vertex AI. Returns dict with keys: status, data, model, prompt_version, error.
+
+    Authentication is via Google Application Default Credentials (ADC).
+    On the VPS, set GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+    or run `gcloud auth application-default login`.
+    """
+    client = AnthropicVertex(
+        region=settings.gcp_vertex_region,
+        project_id=settings.gcp_project_id,
+    )
     try:
         msg = client.messages.create(
             model=EXTRACTION_MODEL,

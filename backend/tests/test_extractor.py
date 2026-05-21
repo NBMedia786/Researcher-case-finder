@@ -32,7 +32,7 @@ VALID_LLM_JSON = {
 def test_extract_returns_structured_fields():
     mock_msg = MagicMock()
     mock_msg.content = [MagicMock(text=json.dumps(VALID_LLM_JSON))]
-    with patch("app.extraction.extractor.Anthropic") as MockAnth:
+    with patch("app.extraction.extractor.AnthropicVertex") as MockAnth:
         MockAnth.return_value.messages.create.return_value = mock_msg
         result = extract_case_fields(SAMPLE_TEXT, source_name="Local News")
     assert result["status"] == "extracted"
@@ -44,7 +44,7 @@ def test_extract_marks_no_match_when_not_homicide_sentencing():
     bad = dict(VALID_LLM_JSON, is_homicide_sentencing=False)
     mock_msg = MagicMock()
     mock_msg.content = [MagicMock(text=json.dumps(bad))]
-    with patch("app.extraction.extractor.Anthropic") as MockAnth:
+    with patch("app.extraction.extractor.AnthropicVertex") as MockAnth:
         MockAnth.return_value.messages.create.return_value = mock_msg
         result = extract_case_fields("unrelated text", source_name="X")
     assert result["status"] == "no_match"
