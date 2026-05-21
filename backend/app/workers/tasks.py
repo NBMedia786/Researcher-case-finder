@@ -6,12 +6,16 @@ from app.db import SessionLocal
 from app.models import Source, Case
 from app.sources.newsapi import NewsAPISource
 from app.sources.doj import DOJSource
+from app.sources.mediastack import MediaStackSource
+from app.sources.gdelt import GdeltSource
 from app.config import settings
 from app.notifications.slack import post_summary
 
 SOURCE_REGISTRY = {
     "newsapi": NewsAPISource,
     "doj": DOJSource,
+    "mediastack": MediaStackSource,
+    "gdelt": GdeltSource,
 }
 
 def _build_source(row: Source):
@@ -22,6 +26,8 @@ def _build_source(row: Source):
     # Inject API keys from settings
     if row.name == "newsapi":
         cfg["api_key"] = cfg.get("api_key") or settings.newsapi_key
+    if row.name == "mediastack":
+        cfg["api_key"] = cfg.get("api_key") or settings.mediastack_key
     return cls(config=cfg)
 
 @celery_app.task(bind=True, max_retries=3)
