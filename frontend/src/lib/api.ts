@@ -43,7 +43,21 @@ export const api = {
   updateUser: (id: string, patch: object) =>
     call(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 
-  runPipeline: () => call<{ total_fetched: number; total_new_cases: number; sources_used: { name: string; fetched: number; new_cases: number }[]; errors: string[] }>(
+  runPipeline: () => call<{ run_id: string; status: string; already_running: boolean }>(
     "/api/admin/run-pipeline", { method: "POST" }
   ),
+  pipelineStatus: () => call<{
+    run: null | {
+      id: string;
+      status: "running" | "completed" | "failed";
+      started_at: string;
+      finished_at: string | null;
+      current_source: string | null;
+      total_fetched: number;
+      total_extracted: number;
+      total_new_cases: number;
+      per_source: { name: string; fetched: number; extracted: number; new_cases: number }[];
+      errors: string[];
+    };
+  }>("/api/admin/pipeline-status"),
 };

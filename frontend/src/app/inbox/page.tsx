@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { AppShell } from "@/components/app-shell";
 import { CaseRow } from "@/components/case-row";
 import { api } from "@/lib/api";
@@ -7,6 +7,17 @@ import type { CaseListItem, User } from "@/lib/types";
 
 const STATUS_OPTIONS = ["new", "reviewing", "approved", "rejected",
                         "foia_filed", "records_received", "archived"];
+
+type RunStatus = "running" | "completed" | "failed";
+type PipelineRun = {
+  id: string;
+  status: RunStatus;
+  current_source: string | null;
+  total_fetched: number;
+  total_extracted: number;
+  total_new_cases: number;
+  errors: string[];
+} | null;
 
 export default function InboxPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -17,8 +28,10 @@ export default function InboxPage() {
   const [state, setState] = useState("");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
-  const [running, setRunning] = useState(false);
+  const [run, setRun] = useState<PipelineRun>(null);
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastStatusRef = useRef<RunStatus | null>(null);
 
   useEffect(() => {
     api.me().then((u) => setUser(u as User)).catch(() => {});
@@ -31,7 +44,7 @@ export default function InboxPage() {
     if (state) params.state = state;
     if (q) params.q = q;
     api.listCases(params)
-      .then((r) => {
+      .then((r: unknown) => {
         const data = r as { items: CaseListItem[]; total: number };
         setCases(data.items);
         setTotal(data.total);
@@ -41,25 +54,76 @@ export default function InboxPage() {
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
 
-  async function runPipeline() {
-    setRunning(true);
-    setToast({ type: "ok", msg: "Pipeline running… this can take 1–3 minutes." });
+  const poll = useCallback(async () => {
     try {
-      const result = await api.runPipeline();
-      setToast({
-        type: "ok",
-        msg: `✓ Ingested ${result.total_fetched} articles, created ${result.total_new_cases} new cases.`,
-      });
-      fetchCases();
+      const data = await api.pipelineStatus();
+      setRun(data.run);
+      if (data.run) {
+        const justFinished = lastStatusRef.current === "running" && data.run.status !== "running";
+        lastStatusRef.current = data.run.status;
+        if (data.run.status !== "running") {
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          if (justFinished) {
+            if (data.run.status === "completed") {
+              setToast({
+                type: "ok",
+                msg: `✓ Pipeline finished — ${data.run.total_new_cases} new cases (fetched ${data.run.total_fetched}, extracted ${data.run.total_extracted})`,
+              });
+            } else {
+              setToast({
+                type: "err",
+                msg: `Pipeline failed: ${(data.run.errors || []).slice(0, 1).join(" | ") || "unknown error"}`,
+              });
+            }
+            fetchCases();
+            setTimeout(() => setToast(null), 12000);
+          }
+        }
+      }
+    } catch {
+      /* ignore polling errors */
+    }
+  }, [fetchCases]);
+
+  // On mount: check if a run is already in progress (e.g. user refreshed mid-run)
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    api.pipelineStatus().then((d) => {
+      setRun(d.run);
+      if (d.run?.status === "running") {
+        lastStatusRef.current = "running";
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = setInterval(poll, 3000);
+      }
+    }).catch(() => {});
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [user, poll]);
+
+  async function startPipeline() {
+    try {
+      const data = await api.runPipeline();
+      if (data.already_running) {
+        setToast({ type: "ok", msg: "A pipeline run is already in progress." });
+      } else {
+        setToast({ type: "ok", msg: "Pipeline started. Watching progress…" });
+      }
+      lastStatusRef.current = "running";
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(poll, 3000);
+      poll();
+      setTimeout(() => setToast(null), 6000);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "unknown error";
-      setToast({ type: "err", msg: `Pipeline failed: ${msg.slice(0, 200)}` });
-    } finally {
-      setRunning(false);
-      setTimeout(() => setToast(null), 8000);
+      setToast({ type: "err", msg: `Failed to start: ${msg.slice(0, 200)}` });
     }
   }
 
+  const isRunning = run?.status === "running";
   const totalPages = Math.max(1, Math.ceil(total / 25));
 
   return (
@@ -73,6 +137,26 @@ export default function InboxPage() {
         </div>
       )}
 
+      {/* Live progress banner */}
+      {isRunning && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-4">
+          <svg className="w-5 h-5 animate-spin text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-blue-900">
+              Pipeline running
+              {run?.current_source && <span className="font-normal"> — currently fetching from <code className="px-1 py-0.5 rounded bg-blue-100">{run.current_source}</code></span>}
+            </div>
+            <div className="text-xs text-blue-700 mt-0.5">
+              Fetched {run?.total_fetched ?? 0} articles · Extracted {run?.total_extracted ?? 0} · New cases {run?.total_new_cases ?? 0}
+            </div>
+          </div>
+          <span className="text-xs text-blue-600">Auto-refresh every 3s · safe to leave this page</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -83,17 +167,17 @@ export default function InboxPage() {
         </div>
         {user?.role === "admin" && (
           <button
-            onClick={runPipeline}
-            disabled={running}
+            onClick={startPipeline}
+            disabled={isRunning}
             className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg px-4 py-2 transition shadow-sm"
           >
-            {running ? (
+            {isRunning ? (
               <>
                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                Running pipeline…
+                Running…
               </>
             ) : (
               <>
@@ -150,13 +234,12 @@ export default function InboxPage() {
               ? "No cases match your current filters. Try clearing them."
               : "Run the pipeline to ingest news articles and populate the inbox."}
           </p>
-          {user?.role === "admin" && !status && !state && !q && (
+          {user?.role === "admin" && !status && !state && !q && !isRunning && (
             <button
-              onClick={runPipeline}
-              disabled={running}
-              className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-sm font-medium rounded-lg px-4 py-2 transition"
+              onClick={startPipeline}
+              className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg px-4 py-2 transition"
             >
-              {running ? "Running…" : "Run pipeline now"}
+              Run pipeline now
             </button>
           )}
         </div>
@@ -169,9 +252,7 @@ export default function InboxPage() {
       {/* Pagination */}
       {!loading && cases.length > 0 && (
         <div className="mt-6 flex items-center justify-between text-sm">
-          <span className="text-slate-500">
-            Page {page} of {totalPages}
-          </span>
+          <span className="text-slate-500">Page {page} of {totalPages}</span>
           <div className="flex gap-2">
             <button
               onClick={() => setPage(Math.max(1, page - 1))}
