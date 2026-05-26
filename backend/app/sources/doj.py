@@ -5,7 +5,7 @@ import httpx
 import feedparser
 from app.sources.base import BaseSource, IngestedArticle
 
-DEFAULT_FEEDS = ["https://www.justice.gov/feeds/opa/justice-news.xml"]
+DEFAULT_FEEDS = ["https://www.justice.gov/news/rss"]
 
 SENTENCING_KEYWORDS = (
     "sentenced", "sentencing",
@@ -30,7 +30,7 @@ class DOJSource(BaseSource):
         feeds = self.config.get("feeds") or DEFAULT_FEEDS
         for feed_url in feeds:
             try:
-                r = httpx.get(feed_url, timeout=30.0)
+                r = httpx.get(feed_url, timeout=30.0, follow_redirects=True)
                 if r.status_code != 200:
                     continue
                 parsed = feedparser.parse(r.text)
