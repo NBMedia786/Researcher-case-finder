@@ -40,7 +40,16 @@ class NewsAPISource(BaseSource):
                 "pageSize": 100,
                 "apiKey": api_key,
             }
-            r = httpx.get(NEWSAPI_URL, params=params, timeout=30.0)
+            r = httpx.get(
+                NEWSAPI_URL,
+                params=params,
+                timeout=30.0,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/130.0.0.0 Safari/537.36",
+                },
+            )
             if r.status_code != 200:
                 continue
             data = r.json()
