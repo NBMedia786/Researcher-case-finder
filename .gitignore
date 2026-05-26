@@ -37,3 +37,8 @@ build/
 
 # Logs
 *.log
+
+# PM2 / process-manager configs — keep local to each deployment
+ecosystem.config.js
+ecosystem.config.cjs
+ecosystem.config.mjs
