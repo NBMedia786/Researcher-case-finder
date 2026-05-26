@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db import get_db, SessionLocal
 from app.models import Source, PipelineRun, User
-from app.auth.dependencies import admin_required
+from app.auth.dependencies import current_user
 from app.workers.pipeline import process_article
 from app.workers.tasks import _build_source
 
@@ -23,6 +23,11 @@ def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
         for source in sources:
             run.current_source = source.name
             per = {"name": source.name, "fetched": 0, "extracted": 0, "new_cases": 0}
+            # Mark the source as started right away so partial counts are
+            # recoverable even if the pipeline is killed mid-run.
+            source.last_run_at = datetime.now(timezone.utc)
+            source.items_fetched_24h = 0
+            source.items_extracted_24h = 0
             db.commit()
             src = _build_source(source)
             if src is None:
@@ -47,13 +52,25 @@ def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
                         run.errors = list(run.errors) + [
                             f"{source.name}: {type(e).__name__}: {str(e)[:160]}"
                         ]
+                    # Update source counters incrementally so the Sources page
+                    # reflects live progress even mid-run.
+                    source.items_fetched_24h = per["fetched"]
+                    source.items_extracted_24h = per["extracted"]
                     # Commit progress every 5 articles so the UI can see it.
                     if per["fetched"] % 5 == 0:
                         db.commit()
+                # Source completed without a fatal fetch error — mark success.
+                source.last_run_at = datetime.now(timezone.utc)
+                source.last_success_at = datetime.now(timezone.utc)
+                source.items_fetched_24h = per["fetched"]
+                source.items_extracted_24h = per["extracted"]
+                source.consecutive_failures = 0
             except Exception as e:
                 run.errors = list(run.errors) + [
                     f"{source.name}: fetch failed: {type(e).__name__}: {str(e)[:160]}"
                 ]
+                source.last_run_at = datetime.now(timezone.utc)
+                source.consecutive_failures = (source.consecutive_failures or 0) + 1
             run.per_source = list(run.per_source) + [per]
             db.commit()
 
@@ -78,7 +95,7 @@ def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
 @router.post("/run-pipeline")
 def start_pipeline(
     db: Session = Depends(get_db),
-    user: User = Depends(admin_required),
+    user: User = Depends(current_user),
 ):
     """Kick off a pipeline run in a background thread. Returns the run_id
     immediately. Use GET /api/admin/pipeline-status to track progress."""
@@ -113,7 +130,7 @@ def start_pipeline(
 
 
 @router.get("/pipeline-status")
-def pipeline_status(db: Session = Depends(get_db), admin=Depends(admin_required)):
+def pipeline_status(db: Session = Depends(get_db), user=Depends(current_user)):
     """Return the latest pipeline run row. Frontend polls this every 3s."""
     run = (
         db.query(PipelineRun)

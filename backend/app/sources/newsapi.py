@@ -12,6 +12,8 @@ DEFAULT_QUERIES = [
     '"life without parole" sentenced',
     '"convicted of murder" sentenced',
     '"sentenced to" manslaughter',
+    '"sentencing" murder homicide',
+    '"sentenced" homicide',
 ]
 
 
@@ -25,8 +27,8 @@ class NewsAPISource(BaseSource):
             return
         queries = self.config.get("queries") or DEFAULT_QUERIES
         # NewsAPI free tier delays articles by 24h, so a 24h lookback always
-        # returns 0. Default to 7 days; can be overridden via config.
-        lookback_days = int(self.config.get("lookback_days", 7))
+        # returns 0. Default to 30 days (free tier max); can be overridden.
+        lookback_days = int(self.config.get("lookback_days", 30))
         from_iso = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         for q in queries:

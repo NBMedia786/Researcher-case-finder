@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     newsapi_key: str = ""
     mediastack_key: str = ""
 
+    # Only ingest cases whose sentencing happened within this many days.
+    # Set to a higher number for retrospectives / catch-up runs.
+    sentencing_lookback_days: int = 3
+
     environment: str = "development"
     log_level: str = "INFO"
     frontend_url: str = "http://localhost:3000"

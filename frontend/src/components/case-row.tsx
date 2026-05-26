@@ -24,20 +24,51 @@ function Stars({ score }: { score: number }) {
   );
 }
 
-export function CaseRow({ c }: { c: CaseListItem }) {
+type Props = {
+  c: CaseListItem;
+  onDragStart?: (id: string) => void;
+  onDragEnd?: () => void;
+  isDragging?: boolean;
+};
+
+export function CaseRow({ c, onDragStart, onDragEnd, isDragging }: Props) {
   const style = STATUS_STYLES[c.status] || STATUS_STYLES.new;
   return (
     <Link
       href={`/case/${c.id}`}
-      className="block bg-white rounded-xl border border-slate-200 p-5 hover:border-slate-300 hover:shadow-sm transition group"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", c.id);
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart?.(c.id);
+      }}
+      onDragEnd={() => onDragEnd?.()}
+      className={
+        "relative block bg-white rounded-xl border border-slate-200 p-5 hover:border-slate-300 hover:shadow-sm transition group cursor-grab active:cursor-grabbing " +
+        (isDragging ? "opacity-50 ring-2 ring-indigo-400 ring-offset-2" : "")
+      }
     >
-      <div className="flex items-start justify-between gap-4">
+      {/* Drag handle hint — visible on hover */}
+      <span className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-60 transition-opacity pointer-events-none">
+        <svg className="w-3 h-4 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
+          <circle cx="6" cy="4" r="1.2" /><circle cx="10" cy="4" r="1.2" />
+          <circle cx="6" cy="10" r="1.2" /><circle cx="10" cy="10" r="1.2" />
+          <circle cx="6" cy="16" r="1.2" /><circle cx="10" cy="16" r="1.2" />
+        </svg>
+      </span>
+
+      <div className="flex items-start justify-between gap-4 pl-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1.5">
             <Stars score={c.content_score} />
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${style.bg} ${style.text}`}>
               {style.label}
             </span>
+            {c.assigned_to && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-50 text-indigo-700">
+                👤 {c.assigned_to}
+              </span>
+            )}
           </div>
           <h3 className="font-semibold text-slate-900 group-hover:text-slate-700">
             {c.defendant_name}

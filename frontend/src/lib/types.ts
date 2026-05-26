@@ -2,6 +2,16 @@ export type CaseStatus =
   | "new" | "reviewing" | "approved" | "rejected"
   | "foia_filed" | "records_received" | "archived";
 
+export const TEAM_MEMBERS = [
+  "Gagandeep",
+  "Rudransh",
+  "Piyush",
+  "Cyrus",
+  "Shivanshi",
+  "Vandana",
+] as const;
+export type TeamMember = (typeof TEAM_MEMBERS)[number];
+
 export interface CaseListItem {
   id: string;
   defendant_name: string;
@@ -14,6 +24,7 @@ export interface CaseListItem {
   sentence_type: string | null;
   content_score: number;
   status: CaseStatus;
+  assigned_to: string | null;
   summary: string | null;
   created_at: string;
 }
@@ -36,6 +47,7 @@ export interface CaseDetail extends CaseListItem {
   prosecuting_office: string | null;
   investigating_agency: string | null;
   sentence_years: number | null;
+  assigned_to: string | null;
   notes: string | null;
   articles: CaseArticle[];
 }

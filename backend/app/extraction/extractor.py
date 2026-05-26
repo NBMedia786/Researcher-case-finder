@@ -45,7 +45,9 @@ def extract_case_fields(article_text: str, source_name: str) -> dict:
         response = model.generate_content(
             build_user_prompt(article_text, source_name),
             generation_config=GenerationConfig(
-                max_output_tokens=2000,
+                # Was 2000; truncation caused json_decode errors on verbose
+                # articles. 8000 leaves comfortable headroom.
+                max_output_tokens=8000,
                 temperature=0.1,
                 response_mime_type="application/json",
             ),
@@ -56,6 +58,14 @@ def extract_case_fields(article_text: str, source_name: str) -> dict:
             if text.startswith("json"):
                 text = text[4:].strip()
         data = json.loads(text)
+        # Gemini occasionally returns a JSON array wrapping the object,
+        # e.g. `[{...}]`. Unwrap.
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        if not isinstance(data, dict):
+            return {"status": "failed",
+                    "error": f"unexpected output shape: {type(data).__name__}",
+                    "model": EXTRACTION_MODEL, "prompt_version": EXTRACTION_PROMPT_VERSION}
     except json.JSONDecodeError as e:
         return {"status": "failed", "error": f"json_decode: {e}",
                 "model": EXTRACTION_MODEL, "prompt_version": EXTRACTION_PROMPT_VERSION}

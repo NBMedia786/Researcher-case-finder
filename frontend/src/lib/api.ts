@@ -25,6 +25,10 @@ export const api = {
     );
     return call(`/api/cases?${qs.toString()}`);
   },
+  caseStatusCounts: () =>
+    call<
+      Record<string, number> & { by_assignee: Record<string, number> }
+    >("/api/cases/_status_counts"),
   getCase: (id: string) => call(`/api/cases/${id}`),
   updateCase: (id: string, patch: object) =>
     call(`/api/cases/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),

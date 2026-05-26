@@ -22,30 +22,11 @@ def upgrade() -> None:
     # Enable pgcrypto for gen_random_uuid() (useful for Postgres defaults)
     op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
 
-    # --- Enum types (must be created before tables that reference them) ---
-    op.execute(
-        "CREATE TYPE user_role AS ENUM ('admin', 'researcher');"
-    )
-    op.execute(
-        "CREATE TYPE sentence_type AS ENUM ('years', 'life', 'life_no_parole', 'death');"
-    )
-    op.execute(
-        "CREATE TYPE case_status AS ENUM ("
-        "'new', 'reviewing', 'approved', 'rejected', "
-        "'foia_filed', 'records_received', 'archived'"
-        ");"
-    )
-    op.execute(
-        "CREATE TYPE source_type AS ENUM ('news_api', 'rss', 'scraper', 'api', 'webhook');"
-    )
-    op.execute(
-        "CREATE TYPE article_source_type AS ENUM ("
-        "'news_api', 'gdelt', 'doj', 'da_office', 'courtlistener', 'google_alert'"
-        ");"
-    )
-    op.execute(
-        "CREATE TYPE extraction_status AS ENUM ('pending', 'extracted', 'failed', 'no_match');"
-    )
+    # Enum types are auto-created by SQLAlchemy when the first table that
+    # references each one is created (create_type=True on each Enum column).
+    # We don't pre-create them explicitly — that caused duplicate-type errors
+    # because the Column-level Enum's _on_table_create event tries to create
+    # the type a second time regardless of create_type=False.
 
     # --- users table (no FK dependencies) ---
     op.create_table(
@@ -55,7 +36,7 @@ def upgrade() -> None:
         sa.Column("full_name", sa.String(), nullable=True),
         sa.Column(
             "role",
-            sa.Enum("admin", "researcher", name="user_role", create_type=False),
+            sa.Enum("admin", "researcher", name="user_role", create_type=True),
             nullable=False,
             server_default="researcher",
         ),
@@ -87,7 +68,7 @@ def upgrade() -> None:
         sa.Column("sentence_years", sa.Integer(), nullable=True),
         sa.Column(
             "sentence_type",
-            sa.Enum("years", "life", "life_no_parole", "death", name="sentence_type", create_type=False),
+            sa.Enum("years", "life", "life_no_parole", "death", name="sentence_type", create_type=True),
             nullable=True,
         ),
         sa.Column("sentencing_date", sa.Date(), nullable=False),
@@ -106,7 +87,7 @@ def upgrade() -> None:
                 "new", "reviewing", "approved", "rejected",
                 "foia_filed", "records_received", "archived",
                 name="case_status",
-                create_type=False,
+                create_type=True,
             ),
             nullable=False,
             server_default="new",
@@ -139,7 +120,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(), nullable=False),
         sa.Column(
             "type",
-            sa.Enum("news_api", "rss", "scraper", "api", "webhook", name="source_type", create_type=False),
+            sa.Enum("news_api", "rss", "scraper", "api", "webhook", name="source_type", create_type=True),
             nullable=False,
         ),
         sa.Column("config", JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
@@ -170,7 +151,7 @@ def upgrade() -> None:
             sa.Enum(
                 "news_api", "gdelt", "doj", "da_office", "courtlistener", "google_alert",
                 name="article_source_type",
-                create_type=False,
+                create_type=True,
             ),
             nullable=False,
         ),
@@ -181,7 +162,7 @@ def upgrade() -> None:
         sa.Column("extracted_json", JSONB(), nullable=True),
         sa.Column(
             "extraction_status",
-            sa.Enum("pending", "extracted", "failed", "no_match", name="extraction_status", create_type=False),
+            sa.Enum("pending", "extracted", "failed", "no_match", name="extraction_status", create_type=True),
             nullable=False,
             server_default="pending",
         ),

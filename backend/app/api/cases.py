@@ -33,6 +33,7 @@ def list_cases(
     state: Optional[str] = None,
     min_score: Optional[int] = None,
     q: Optional[str] = None,
+    assigned_to: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ):
@@ -43,6 +44,11 @@ def list_cases(
         qry = qry.filter(Case.state == state.upper())
     if min_score:
         qry = qry.filter(Case.content_score >= min_score)
+    if assigned_to:
+        if assigned_to == "__unassigned__":
+            qry = qry.filter(Case.assigned_to.is_(None))
+        else:
+            qry = qry.filter(Case.assigned_to == assigned_to)
     if q:
         like = f"%{q.lower()}%"
         qry = qry.filter(or_(
@@ -59,6 +65,42 @@ def list_cases(
         items=[CaseListItem.model_validate(c) for c in items],
         total=total, page=page, page_size=page_size,
     )
+
+
+TEAM_MEMBERS = ["Gagandeep", "Rudransh", "Piyush", "Cyrus", "Shivanshi", "Vandana"]
+
+
+@router.get("/_status_counts")
+def status_counts(db: Session = Depends(get_db), user=Depends(current_user)):
+    """Return a count of cases per status + per-assignee — used by the inbox tabs."""
+    from sqlalchemy import func
+    rows = (
+        db.query(Case.status, func.count(Case.id))
+        .group_by(Case.status)
+        .all()
+    )
+    out = {s: 0 for s in (
+        "new", "reviewing", "approved", "rejected",
+        "foia_filed", "records_received", "archived",
+    )}
+    for s, n in rows:
+        out[s] = n
+    out["all"] = sum(out.values())
+
+    by_assignee = {m: 0 for m in TEAM_MEMBERS}
+    by_assignee["__unassigned__"] = 0
+    assignee_rows = (
+        db.query(Case.assigned_to, func.count(Case.id))
+        .group_by(Case.assigned_to)
+        .all()
+    )
+    for name, n in assignee_rows:
+        if name is None:
+            by_assignee["__unassigned__"] = n
+        elif name in by_assignee:
+            by_assignee[name] = n
+    out["by_assignee"] = by_assignee
+    return out
 
 
 @router.get("/{case_id}", response_model=CaseDetail)

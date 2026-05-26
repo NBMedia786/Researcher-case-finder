@@ -6,6 +6,12 @@ from app.models import Case
 
 _PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
 _WS_RE = re.compile(r"\s+")
+# Generational/professional suffixes stripped so "John Smith Jr" matches
+# "John Smith" and "John Smith Jr."
+_SUFFIX_RE = re.compile(
+    r"\b(jr|sr|ii|iii|iv|v|esq|md|phd|dds|cpa)\.?$",
+    re.IGNORECASE,
+)
 
 def normalize_name(name: str) -> str:
     if not name:
@@ -15,7 +21,13 @@ def normalize_name(name: str) -> str:
     no_accent = "".join(c for c in nfkd if not unicodedata.combining(c))
     lowered = no_accent.lower()
     no_punct = _PUNCT_RE.sub("", lowered)
-    return _WS_RE.sub(" ", no_punct).strip()
+    collapsed = _WS_RE.sub(" ", no_punct).strip()
+    # Repeatedly strip trailing suffix tokens ("john smith jr ii" -> "john smith")
+    prev = None
+    while prev != collapsed:
+        prev = collapsed
+        collapsed = _SUFFIX_RE.sub("", collapsed).strip()
+    return collapsed
 
 def find_matching_case(
     db: Session,

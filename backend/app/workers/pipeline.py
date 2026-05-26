@@ -1,5 +1,6 @@
-from datetime import date as date_cls, datetime
+from datetime import date as date_cls, datetime, timezone, timedelta
 from sqlalchemy.orm import Session
+from app.config import settings
 from app.models import Article, Case
 from app.sources.base import IngestedArticle
 from app.extraction.extractor import extract_case_fields
@@ -44,10 +45,34 @@ def process_article(db: Session, ia: IngestedArticle) -> dict:
     state = (data.get("state") or "").upper()[:2]
     defendant = data.get("defendant_name") or ""
 
-    if not (sentencing_date and state and defendant):
+    # Fall back to the article's publish date when LLM couldn't extract a
+    # specific sentencing date — news articles are usually published within
+    # a day of the event. Researcher can correct via the UI.
+    if not sentencing_date and ia.published_at:
+        sentencing_date = ia.published_at.date()
+
+    # If we still can't determine a date, drop it — we can't reliably
+    # filter by recency without one.
+    if not sentencing_date:
         article.extraction_status = "no_match"
         db.commit()
-        return {"skipped": True, "reason": "missing key fields"}
+        return {"skipped": True, "reason": "no sentencing date extractable"}
+
+    # Recency filter: only ingest sentencings from the last N days.
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=settings.sentencing_lookback_days)
+    if sentencing_date < cutoff:
+        article.extraction_status = "no_match"
+        db.commit()
+        return {"skipped": True, "reason": f"sentencing too old ({sentencing_date} < {cutoff})"}
+
+    # Only DEFENDANT_NAME is strictly required. State can be filled in by
+    # the researcher; missing state stored as empty string.
+    if not defendant:
+        article.extraction_status = "no_match"
+        db.commit()
+        return {"skipped": True, "reason": "missing defendant name"}
+    if not state:
+        state = "??"  # placeholder so the column (CHAR(2) NOT NULL) accepts it
 
     match = find_matching_case(db, defendant, sentencing_date, state)
     created = False

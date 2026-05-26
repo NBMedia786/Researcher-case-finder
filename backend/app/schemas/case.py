@@ -16,6 +16,7 @@ class CaseListItem(BaseModel):
     sentence_type: Optional[str]
     content_score: int
     status: str
+    assigned_to: Optional[str] = None
     summary: Optional[str]
     created_at: datetime
 
@@ -66,4 +67,6 @@ class CaseUpdate(BaseModel):
     judge_name: Optional[str] = None
     prosecuting_office: Optional[str] = None
     investigating_agency: Optional[str] = None
+    assigned_to: Optional[str] = None
+    status: Optional[str] = None
     notes: Optional[str] = None

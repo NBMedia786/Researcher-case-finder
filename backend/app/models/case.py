@@ -34,6 +34,7 @@ class Case(Base):
     status = Column(Enum(*CASE_STATUS, name="case_status"), nullable=False, default="new", index=True)
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    assigned_to = Column(String(64), nullable=True, index=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
