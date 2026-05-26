@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api";
+import { formatIST } from "@/lib/utils";
 import type { SourceItem } from "@/lib/types";
 
 function statusOf(s: SourceItem) {
@@ -10,24 +11,6 @@ function statusOf(s: SourceItem) {
   if (s.consecutive_failures > 0) return { label: "warn", color: "bg-amber-500" };
   if (!s.last_success_at) return { label: "new", color: "bg-slate-400" };
   return { label: "ok", color: "bg-emerald-500" };
-}
-
-// Render an ISO UTC timestamp as IST (Asia/Kolkata) in a readable format.
-const IST_FMT = new Intl.DateTimeFormat("en-IN", {
-  timeZone: "Asia/Kolkata",
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: true,
-});
-
-function formatIST(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "—";
-  return `${IST_FMT.format(d)} IST`;
 }
 
 export default function SourcesPage() {

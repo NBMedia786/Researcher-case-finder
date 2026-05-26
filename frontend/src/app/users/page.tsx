@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api";
+import { formatIST } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
 export default function UsersPage() {
@@ -23,7 +24,7 @@ export default function UsersPage() {
             <th className="text-left p-3">Name</th>
             <th className="text-left p-3">Role</th>
             <th className="text-left p-3">Active</th>
-            <th className="text-left p-3">Last login</th>
+            <th className="text-left p-3">Last login (IST)</th>
             <th className="p-3"></th>
           </tr>
         </thead>
@@ -50,7 +51,7 @@ export default function UsersPage() {
                   {u.is_active ? "active" : "inactive"}
                 </span>
               </td>
-              <td className="p-3 text-slate-600">{u.last_login_at ?? "—"}</td>
+              <td className="p-3 text-slate-600">{formatIST(u.last_login_at)}</td>
               <td className="p-3 text-right space-x-2">
                 <button
                   onClick={async () => {

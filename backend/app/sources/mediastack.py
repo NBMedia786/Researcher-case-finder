@@ -25,9 +25,13 @@ class MediaStackSource(BaseSource):
         if not api_key or api_key.startswith("PASTE_"):
             return
         queries = self.config.get("queries") or DEFAULT_QUERIES
+        # MediaStack accepts a date range "YYYY-MM-DD,YYYY-MM-DD".
+        # Default to last 30 days so retrospective runs catch recent
+        # sentencings, not just today's news.
+        lookback_days = int(self.config.get("lookback_days", 30))
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
-        date_range = f"{yesterday},{today}"
+        start = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+        date_range = f"{start},{today}"
 
         for q in queries:
             params = {

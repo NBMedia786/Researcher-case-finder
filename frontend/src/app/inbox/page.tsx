@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { CaseRow } from "@/components/case-row";
 import { api } from "@/lib/api";
@@ -38,20 +39,33 @@ type CountsPayload = Record<string, number> & {
 };
 
 export default function InboxPage() {
+  return (
+    <Suspense fallback={<AppShell><div className="text-slate-500">Loading inbox…</div></AppShell>}>
+      <InboxInner />
+    </Suspense>
+  );
+}
+
+function InboxInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [status, setStatus] = useState("");
-  const [assignedTo, setAssignedTo] = useState("");
-  const [state, setState] = useState("");
-  const [q, setQ] = useState("");
+  const [page, setPage] = useState(() => Number(searchParams.get("page")) || 1);
+  const [status, setStatus] = useState(() => searchParams.get("status") || "");
+  const [assignedTo, setAssignedTo] = useState(() => searchParams.get("assigned_to") || "");
+  const [state, setState] = useState(() => searchParams.get("state") || "");
+  const [q, setQ] = useState(() => searchParams.get("q") || "");
   const [loading, setLoading] = useState(true);
   const [run, setRun] = useState<PipelineRun>(null);
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const [counts, setCounts] = useState<CountsPayload>({});
   const [draggingCaseId, setDraggingCaseId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+  const [bulkAssigning, setBulkAssigning] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastStatusRef = useRef<RunStatus | null>(null);
   const lastNewCasesRef = useRef<number>(0);
@@ -59,6 +73,22 @@ export default function InboxPage() {
   useEffect(() => {
     api.me().then((u) => setUser(u as User)).catch(() => {});
   }, []);
+
+  // Mirror current filter state into the URL so going back to /inbox
+  // (from a case detail page, browser Back, or refresh) restores the same tab.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (assignedTo) params.set("assigned_to", assignedTo);
+    if (state) params.set("state", state);
+    if (q) params.set("q", q);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    const next = qs ? `/inbox?${qs}` : "/inbox";
+    if (typeof window !== "undefined" && window.location.pathname + window.location.search !== next) {
+      router.replace(next, { scroll: false });
+    }
+  }, [status, assignedTo, state, q, page, router]);
 
   const fetchCases = useCallback(() => {
     setLoading(true);
@@ -165,6 +195,58 @@ export default function InboxPage() {
       }
       const msg = e instanceof Error ? e.message : "unknown error";
       setToast({ type: "err", msg: `Failed to start: ${msg.slice(0, 200)}` });
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      const allVisibleIds = cases.map((c) => c.id);
+      const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => prev.has(id));
+      if (allSelected) {
+        const next = new Set(prev);
+        for (const id of allVisibleIds) next.delete(id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const id of allVisibleIds) next.add(id);
+      return next;
+    });
+  }
+
+  async function bulkAssign(name: string | null) {
+    if (selectedIds.size === 0) return;
+    setBulkAssigning(true);
+    setBulkMenuOpen(false);
+    const ids = Array.from(selectedIds);
+    // Optimistic UI
+    setCases((cs) => cs.map((c) => (selectedIds.has(c.id) ? { ...c, assigned_to: name } : c)));
+    try {
+      await Promise.all(ids.map((id) => api.updateCase(id, { assigned_to: name })));
+      api.caseStatusCounts().then(setCounts).catch(() => {});
+      setToast({
+        type: "ok",
+        msg: name
+          ? `✓ Assigned ${ids.length} case${ids.length === 1 ? "" : "s"} to ${name}`
+          : `✓ Unassigned ${ids.length} case${ids.length === 1 ? "" : "s"}`,
+      });
+      setSelectedIds(new Set());
+      setTimeout(() => setToast(null), 3000);
+    } catch (e: unknown) {
+      // On failure, reload to reconcile
+      fetchCases();
+      const msg = e instanceof Error ? e.message : "unknown error";
+      setToast({ type: "err", msg: `Bulk assign failed: ${msg.slice(0, 200)}` });
+      setTimeout(() => setToast(null), 5000);
+    } finally {
+      setBulkAssigning(false);
     }
   }
 
@@ -477,16 +559,126 @@ export default function InboxPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
-          {cases.map(c => (
-            <CaseRow
-              key={c.id}
-              c={c}
-              isDragging={draggingCaseId === c.id}
-              onDragStart={(id) => setDraggingCaseId(id)}
-              onDragEnd={() => { setDraggingCaseId(null); setDropTarget(null); }}
-            />
-          ))}
+        <>
+          {/* Select-all row */}
+          <div className="flex items-center justify-between mb-2 px-1">
+            <label className="inline-flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+              <span
+                role="checkbox"
+                aria-checked={cases.length > 0 && cases.every((c) => selectedIds.has(c.id))}
+                tabIndex={0}
+                onClick={toggleSelectAll}
+                onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleSelectAll(); } }}
+                className={
+                  "w-5 h-5 rounded-md flex items-center justify-center transition-all " +
+                  (cases.length > 0 && cases.every((c) => selectedIds.has(c.id))
+                    ? "bg-indigo-600 border-2 border-indigo-600"
+                    : "bg-white border-2 border-slate-300 hover:border-slate-400")
+                }
+              >
+                {cases.length > 0 && cases.every((c) => selectedIds.has(c.id)) && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </span>
+              <span>Select all on this page</span>
+            </label>
+            {selectedIds.size > 0 && (
+              <span className="text-xs text-slate-500">{selectedIds.size} selected</span>
+            )}
+          </div>
+          <div className="space-y-3">
+            {cases.map(c => (
+              <CaseRow
+                key={c.id}
+                c={c}
+                isDragging={draggingCaseId === c.id}
+                onDragStart={(id) => setDraggingCaseId(id)}
+                onDragEnd={() => { setDraggingCaseId(null); setDropTarget(null); }}
+                selected={selectedIds.has(c.id)}
+                onToggleSelect={toggleSelect}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Floating bulk-action bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700 px-4 py-3 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4">
+          <span className="inline-flex items-center gap-2 text-sm font-medium pr-1">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-indigo-500/20 text-indigo-300 text-xs font-bold">
+              {selectedIds.size}
+            </span>
+            selected
+          </span>
+          <div className="w-px h-6 bg-slate-700" />
+          <div className="relative">
+            <button
+              disabled={bulkAssigning}
+              onClick={() => setBulkMenuOpen((v) => !v)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-wait focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-1 focus:ring-offset-slate-900"
+            >
+              {bulkAssigning ? (
+                <>
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Assigning…
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7zM18 12h4m-2-2v4" />
+                  </svg>
+                  Assign to…
+                </>
+              )}
+            </button>
+            {bulkMenuOpen && (
+              <div className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 min-w-[180px] text-slate-900">
+                <button
+                  onClick={() => bulkAssign(null)}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center gap-2 text-slate-600"
+                >
+                  <span className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center">
+                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                  </span>
+                  Unassigned
+                </button>
+                <div className="h-px bg-slate-100 my-1" />
+                {TEAM_MEMBERS.map((name) => {
+                  const colors = MEMBER_COLORS[name];
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => bulkAssign(name)}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${colors.chip} ${colors.text}`}>
+                        {name.charAt(0)}
+                      </span>
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => { setSelectedIds(new Set()); setBulkMenuOpen(false); }}
+            disabled={bulkAssigning}
+            className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 active:scale-95 transition-all disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-1 focus:ring-offset-slate-900"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Clear
+          </button>
         </div>
       )}
 

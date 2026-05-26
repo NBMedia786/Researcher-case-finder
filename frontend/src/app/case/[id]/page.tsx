@@ -86,7 +86,16 @@ export default function CaseDetailPage() {
   return (
     <AppShell>
       <button
-        onClick={() => router.push("/inbox")}
+        onClick={() => {
+          // Prefer browser-back so we return to the inbox URL with the same
+          // tab/filter the user came from. Fall back to /inbox if there's
+          // no history (e.g. user pasted the case URL directly).
+          if (typeof window !== "undefined" && window.history.length > 1) {
+            router.back();
+          } else {
+            router.push("/inbox");
+          }
+        }}
         className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-1 mb-4"
       >
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -29,9 +29,11 @@ type Props = {
   onDragStart?: (id: string) => void;
   onDragEnd?: () => void;
   isDragging?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 };
 
-export function CaseRow({ c, onDragStart, onDragEnd, isDragging }: Props) {
+export function CaseRow({ c, onDragStart, onDragEnd, isDragging, selected, onToggleSelect }: Props) {
   const style = STATUS_STYLES[c.status] || STATUS_STYLES.new;
   return (
     <Link
@@ -44,12 +46,51 @@ export function CaseRow({ c, onDragStart, onDragEnd, isDragging }: Props) {
       }}
       onDragEnd={() => onDragEnd?.()}
       className={
-        "relative block bg-white rounded-xl border border-slate-200 p-5 hover:border-slate-300 hover:shadow-sm transition group cursor-grab active:cursor-grabbing " +
+        "relative block bg-white rounded-xl border p-5 hover:shadow-sm transition group cursor-grab active:cursor-grabbing " +
+        (selected
+          ? "border-indigo-400 ring-2 ring-indigo-200 bg-indigo-50/30 "
+          : "border-slate-200 hover:border-slate-300 ") +
         (isDragging ? "opacity-50 ring-2 ring-indigo-400 ring-offset-2" : "")
       }
     >
-      {/* Drag handle hint — visible on hover */}
-      <span className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-60 transition-opacity pointer-events-none">
+      {/* Selection checkbox — always visible on the left */}
+      {onToggleSelect && (
+        <span
+          role="checkbox"
+          aria-checked={selected}
+          tabIndex={0}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggleSelect(c.id);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === " " || e.key === "Enter") {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleSelect(c.id);
+            }
+          }}
+          className={
+            "absolute left-4 top-5 w-5 h-5 rounded-md flex items-center justify-center cursor-pointer transition-all " +
+            (selected
+              ? "bg-indigo-600 border-2 border-indigo-600 shadow-sm"
+              : "bg-white border-2 border-slate-300 group-hover:border-slate-400")
+          }
+        >
+          {selected && (
+            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </span>
+      )}
+
+      {/* Drag handle hint — visible on hover, shifted right of checkbox */}
+      <span className={
+        "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-60 transition-opacity pointer-events-none " +
+        (onToggleSelect ? "left-11" : "left-1")
+      }>
         <svg className="w-3 h-4 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
           <circle cx="6" cy="4" r="1.2" /><circle cx="10" cy="4" r="1.2" />
           <circle cx="6" cy="10" r="1.2" /><circle cx="10" cy="10" r="1.2" />
@@ -57,7 +98,7 @@ export function CaseRow({ c, onDragStart, onDragEnd, isDragging }: Props) {
         </svg>
       </span>
 
-      <div className="flex items-start justify-between gap-4 pl-3">
+      <div className={"flex items-start justify-between gap-4 " + (onToggleSelect ? "pl-12" : "pl-3")}>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1.5">
             <Stars score={c.content_score} />
