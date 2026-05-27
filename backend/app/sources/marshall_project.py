@@ -13,7 +13,7 @@ import feedparser
 from app.sources.base import BaseSource, IngestedArticle
 from app.sources.article_scraper import fetch_article_body
 
-DEFAULT_FEEDS = ["https://www.themarshallproject.org/feed/all.rss"]
+DEFAULT_FEEDS = ["https://www.themarshallproject.org/rss/recent.rss"]
 
 SENTENCE_TERMS = ("sentenced", "sentencing", "sentence")
 HOMICIDE_TERMS = ("murder", "homicide")
