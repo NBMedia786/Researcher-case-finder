@@ -4,7 +4,12 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from app.db import Base
 
-SOURCE_TYPE = ("news_api", "rss", "scraper", "api", "webhook")
+SOURCE_TYPE = (
+    "news_api", "rss", "scraper", "api", "webhook",
+    # Added via migration 0006 for the new sources:
+    "web_search",     # serpapi, tavily
+    "court_records",  # courtlistener
+)
 
 
 class Source(Base):
