@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timezone
 from typing import Iterable
 import httpx
@@ -5,6 +6,12 @@ from app.sources.base import BaseSource, IngestedArticle
 from app.sources.article_scraper import fetch_article_body
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
+
+# GDELT is famously rate-limited / overloaded and routinely refuses TCP
+# connections or takes 20-30s to respond. We retry up to 3 times with
+# linear backoff before giving up on a single query.
+_MAX_RETRIES = 3
+_RETRY_BACKOFF_SECONDS = 3
 
 # GDELT DOC API supports boolean queries; sourcecountry:US restricts to
 # articles from US-based publishers (which is where US homicide sentencings
@@ -47,13 +54,24 @@ class GdeltSource(BaseSource):
                 "maxrecords": 250,
                 "sort": "DateDesc",
             }
-            r = httpx.get(GDELT_URL, params=params, timeout=30.0)
-            if r.status_code != 200:
-                continue
-            try:
-                data = r.json()
-            except ValueError:
-                # GDELT occasionally returns non-JSON HTML when overloaded
+            # Retry the request up to _MAX_RETRIES times — GDELT regularly
+            # refuses the first TCP handshake or returns non-JSON HTML under
+            # load. A single bad query should NOT kill the whole source.
+            data = None
+            for attempt in range(_MAX_RETRIES):
+                try:
+                    # GDELT response times routinely hit 20-25s under load;
+                    # 60s gives comfortable headroom on all phases.
+                    r = httpx.get(GDELT_URL, params=params, timeout=60.0)
+                    if r.status_code != 200:
+                        break
+                    data = r.json()
+                    break
+                except (httpx.HTTPError, ValueError):
+                    if attempt < _MAX_RETRIES - 1:
+                        time.sleep(_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                    continue
+            if data is None:
                 continue
             for a in data.get("articles", []):
                 title = a.get("title") or ""
