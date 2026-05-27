@@ -15,7 +15,6 @@ from app.sources.marshall_project import MarshallProjectSource
 from app.sources.prnewswire import PRNewswireSource
 from app.sources.newsdata import NewsDataSource
 from app.sources.gnews import GNewsSource
-from app.sources.bing_news import BingNewsSource
 from app.config import settings
 from app.notifications.slack import post_summary
 
@@ -31,7 +30,6 @@ SOURCE_REGISTRY = {
     "prnewswire": PRNewswireSource,
     "newsdata": NewsDataSource,
     "gnews": GNewsSource,
-    "bing_news": BingNewsSource,
 }
 
 def _build_source(row: Source):
@@ -54,8 +52,6 @@ def _build_source(row: Source):
         cfg["api_key"] = cfg.get("api_key") or settings.newsdata_api_key
     if row.name == "gnews":
         cfg["api_key"] = cfg.get("api_key") or settings.gnews_api_key
-    if row.name == "bing_news":
-        cfg["api_key"] = cfg.get("api_key") or settings.bing_news_api_key
     return cls(config=cfg)
 
 @celery_app.task(bind=True, max_retries=3)

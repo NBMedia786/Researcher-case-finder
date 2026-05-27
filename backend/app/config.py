@@ -37,8 +37,6 @@ class Settings(BaseSettings):
     newsdata_api_key: str = ""
     # GNews.io (free 100/day)
     gnews_api_key: str = ""
-    # Bing News Search via Azure Cognitive Services (free F1 tier: 1000/mo)
-    bing_news_api_key: str = ""
 
     # Only ingest cases whose sentencing happened within this many days.
     # Set to a higher number for retrospectives / catch-up runs.
