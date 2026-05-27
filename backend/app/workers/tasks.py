@@ -8,6 +8,9 @@ from app.sources.newsapi import NewsAPISource
 from app.sources.doj import DOJSource
 from app.sources.mediastack import MediaStackSource
 from app.sources.gdelt import GdeltSource
+from app.sources.serpapi import SerpAPISource
+from app.sources.tavily import TavilySource
+from app.sources.courtlistener import CourtListenerSource
 from app.config import settings
 from app.notifications.slack import post_summary
 
@@ -16,6 +19,9 @@ SOURCE_REGISTRY = {
     "doj": DOJSource,
     "mediastack": MediaStackSource,
     "gdelt": GdeltSource,
+    "serpapi": SerpAPISource,
+    "tavily": TavilySource,
+    "courtlistener": CourtListenerSource,
 }
 
 def _build_source(row: Source):
@@ -28,6 +34,12 @@ def _build_source(row: Source):
         cfg["api_key"] = cfg.get("api_key") or settings.newsapi_key
     if row.name == "mediastack":
         cfg["api_key"] = cfg.get("api_key") or settings.mediastack_key
+    if row.name == "serpapi":
+        cfg["api_key"] = cfg.get("api_key") or settings.serpapi_key
+    if row.name == "tavily":
+        cfg["api_key"] = cfg.get("api_key") or settings.tavily_api_key
+    if row.name == "courtlistener":
+        cfg["api_token"] = cfg.get("api_token") or settings.courtlistener_api_token
     return cls(config=cfg)
 
 @celery_app.task(bind=True, max_retries=3)

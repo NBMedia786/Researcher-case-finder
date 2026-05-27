@@ -27,6 +27,12 @@ class Settings(BaseSettings):
 
     newsapi_key: str = ""
     mediastack_key: str = ""
+    # Google News via SerpAPI ($50/mo paid) — replicates web-search coverage
+    serpapi_key: str = ""
+    # Tavily LLM-optimized web search (free tier: 1000 searches/month)
+    tavily_api_key: str = ""
+    # CourtListener federal court records (free; token raises rate limit)
+    courtlistener_api_token: str = ""
 
     # Only ingest cases whose sentencing happened within this many days.
     # Set to a higher number for retrospectives / catch-up runs.
