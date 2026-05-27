@@ -11,6 +11,10 @@ the caller falls back to whatever snippet the news API provided.
 
 from __future__ import annotations
 
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
 import httpx
 from bs4 import BeautifulSoup
 
@@ -36,20 +40,81 @@ _NOISE_TAGS = (
 _MAX_CHARS = 15000
 
 
+def _is_safe_public_url(url: str) -> bool:
+    """SSRF guard.
+
+    URLs in this app come from third-party search APIs (NewsAPI, MediaStack,
+    GDELT, SerpAPI, Tavily). A malicious or compromised result could point at
+    internal infrastructure (cloud metadata services, internal admin APIs,
+    LAN hosts). We resolve every hostname and reject any address in the
+    loopback, private, link-local, or multicast ranges before issuing the
+    HTTP request.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            return False
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            return False
+    return True
+
+
 def fetch_article_body(url: str, timeout: float = 15.0) -> str | None:
     """Return main article body text, or None if the URL can't be fetched
     or parsed.
 
     This is intentionally best-effort: paywalled or anti-bot sites will
     return None and the caller should fall back to the API-provided snippet.
+    Any URL resolving to a non-public IP is refused (SSRF guard).
     """
+    if not _is_safe_public_url(url):
+        return None
     try:
+        # follow_redirects=False so an attacker can't get the destination
+        # validated and then 302 us into an internal address.
         r = httpx.get(
             url,
             headers=DEFAULT_HEADERS,
             timeout=timeout,
-            follow_redirects=True,
+            follow_redirects=False,
         )
+        # Manually walk up to 5 redirect hops, re-validating each Location.
+        hops = 0
+        while r.status_code in (301, 302, 303, 307, 308) and "location" in r.headers and hops < 5:
+            next_url = httpx.URL(r.headers["location"])
+            if not next_url.is_absolute_url:
+                next_url = r.url.join(next_url)
+            if not _is_safe_public_url(str(next_url)):
+                return None
+            r = httpx.get(
+                str(next_url),
+                headers=DEFAULT_HEADERS,
+                timeout=timeout,
+                follow_redirects=False,
+            )
+            hops += 1
     except Exception:
         return None
     if r.status_code != 200:

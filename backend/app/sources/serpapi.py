@@ -33,6 +33,12 @@ class SerpAPISource(BaseSource):
         queries = self.config.get("queries") or DEFAULT_QUERIES
 
         for q in queries:
+            # NOTE: SerpAPI's documented auth mechanism is the `api_key` query
+            # parameter — they do not support Authorization headers. The key
+            # is only ever sent outbound over HTTPS to serpapi.com; httpx
+            # does not log request URLs, and we never echo the params dict
+            # in exception handlers. If a future logging middleware is added,
+            # it MUST scrub `api_key` from URLs before emission.
             params = {
                 "engine": "google_news",
                 "q": q,
