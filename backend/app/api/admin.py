@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db import get_db, SessionLocal
-from app.models import Source, PipelineRun, User
+from app.models import Source, PipelineRun, Topic, User
 from app.auth.dependencies import current_user
 from app.workers.pipeline import process_article
 from app.workers.tasks import _build_source
@@ -18,6 +18,8 @@ def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
     db = SessionLocal()
     try:
         run = db.query(PipelineRun).filter(PipelineRun.id == run_id).one()
+        # Active topic drives queries + LLM criteria + recency filter.
+        topic = db.query(Topic).filter(Topic.is_active.is_(True)).one_or_none()
         sources = db.query(Source).filter(Source.is_active).order_by(Source.name).all()
 
         for source in sources:
@@ -29,7 +31,7 @@ def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
             source.items_fetched_24h = 0
             source.items_extracted_24h = 0
             db.commit()
-            src = _build_source(source)
+            src = _build_source(source, topic=topic)
             if src is None:
                 run.errors = list(run.errors) + [f"{source.name}: no handler"]
                 run.per_source = list(run.per_source) + [per]
@@ -40,7 +42,7 @@ def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
                     per["fetched"] += 1
                     run.total_fetched += 1
                     try:
-                        result = process_article(db, ia)
+                        result = process_article(db, ia, topic=topic)
                         if not result.get("skipped"):
                             per["extracted"] += 1
                             run.total_extracted += 1

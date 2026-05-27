@@ -46,6 +46,10 @@ class GdeltSource(BaseSource):
         timespan = self.config.get("timespan", "30d")
 
         for q in queries:
+            # If the query came from a Topic (no sourcecountry baked in),
+            # append it so we stay US-only. Idempotent if already present.
+            if "sourcecountry:" not in q:
+                q = f"{q} sourcecountry:US"
             params = {
                 "query": q,
                 "mode": "ArtList",

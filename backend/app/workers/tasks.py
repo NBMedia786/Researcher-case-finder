@@ -32,7 +32,16 @@ SOURCE_REGISTRY = {
     "gnews": GNewsSource,
 }
 
-def _build_source(row: Source):
+def _build_source(row: Source, topic=None):
+    """Build a source instance with API keys injected from settings, and
+    optionally inject the active Topic's queries into the source config.
+
+    For sources that take a `queries` config key, the topic's queries
+    override the source's hardcoded DEFAULT_QUERIES. RSS sources (DOJ,
+    Marshall Project, PR Newswire) ignore queries — they filter post-
+    fetch by hardcoded keyword sets, so they'll keep behaving as a
+    homicide filter regardless of topic for now (phase 2 will widen).
+    """
     cls = SOURCE_REGISTRY.get(row.name)
     if cls is None:
         return None
@@ -52,6 +61,13 @@ def _build_source(row: Source):
         cfg["api_key"] = cfg.get("api_key") or settings.newsdata_api_key
     if row.name == "gnews":
         cfg["api_key"] = cfg.get("api_key") or settings.gnews_api_key
+
+    # Inject the active topic's plain-keyword queries. Each source's
+    # fetch() already prefers config["queries"] over its DEFAULT_QUERIES.
+    # GDELT and MediaStack do per-source syntax adaptation internally.
+    if topic is not None and topic.queries:
+        cfg["queries"] = list(topic.queries)
+
     return cls(config=cfg)
 
 @celery_app.task(bind=True, max_retries=3)

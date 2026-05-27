@@ -37,9 +37,13 @@ class MediaStackSource(BaseSource):
         date_range = f"{start},{today}"
 
         for q in queries:
+            # MediaStack's `keywords` parameter uses commas as AND. If the
+            # query was provided as space-separated (e.g. from a Topic),
+            # convert spaces to commas so each word becomes a required term.
+            keywords = q if "," in q else q.replace(" ", ",")
             params = {
                 "access_key": api_key,
-                "keywords": q,
+                "keywords": keywords,
                 "countries": "us",
                 "languages": "en",
                 "sort": "published_desc",

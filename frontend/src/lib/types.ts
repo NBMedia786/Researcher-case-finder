@@ -72,3 +72,16 @@ export interface SourceItem {
   items_extracted_24h: number;
   consecutive_failures: number;
 }
+
+export interface Topic {
+  id: string;
+  name: string;
+  queries: string[];
+  extraction_criteria: string;
+  recency_days: number;
+  is_active: boolean;
+  is_default: boolean;
+  case_count: number;
+  created_at: string;
+  updated_at: string;
+}

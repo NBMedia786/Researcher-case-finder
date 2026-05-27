@@ -4,7 +4,8 @@ import vertexai
 from vertexai.generative_models import GenerativeModel, GenerationConfig
 from app.config import settings
 from app.extraction.prompts import (
-    EXTRACTION_SYSTEM_PROMPT, EXTRACTION_PROMPT_VERSION, build_user_prompt,
+    EXTRACTION_PROMPT_VERSION, build_system_prompt, build_user_prompt,
+    DEFAULT_TOPIC_NAME, DEFAULT_TOPIC_CRITERIA,
 )
 
 EXTRACTION_MODEL = "gemini-2.5-pro"
@@ -19,7 +20,7 @@ _RATE_LIMIT_MAX_ATTEMPTS = 5
 _RATE_LIMIT_BASE_DELAY = 5  # seconds — doubles each attempt
 
 REQUIRED_KEYS = {
-    "is_homicide_sentencing", "defendant_name", "victims", "charges",
+    "is_match", "defendant_name", "victims", "charges",
     "sentence_type", "sentencing_date", "state", "summary",
 }
 
@@ -35,23 +36,33 @@ def _ensure_initialized() -> None:
     _initialized = True
 
 
-def _build_model() -> GenerativeModel:
+def _build_model(system_prompt: str) -> GenerativeModel:
     """Constructs a fresh GenerativeModel (kept as a helper so tests can patch it)."""
-    return GenerativeModel(EXTRACTION_MODEL, system_instruction=EXTRACTION_SYSTEM_PROMPT)
+    return GenerativeModel(EXTRACTION_MODEL, system_instruction=system_prompt)
 
 
-def extract_case_fields(article_text: str, source_name: str) -> dict:
+def extract_case_fields(
+    article_text: str,
+    source_name: str,
+    topic_name: str = DEFAULT_TOPIC_NAME,
+    topic_criteria: str = DEFAULT_TOPIC_CRITERIA,
+) -> dict:
     """Run LLM extraction via Vertex AI Gemini 2.5 Pro.
 
     Returns dict with keys: status, data, model, prompt_version, error.
     Possible status: 'extracted' | 'no_match' | 'failed'.
+
+    The Gemini system prompt is built dynamically from topic_name +
+    topic_criteria so the same extractor handles every topic (homicide
+    sentencings, kidnappings, etc.) without code changes.
 
     Authentication is via Google Application Default Credentials (ADC).
     Set GOOGLE_APPLICATION_CREDENTIALS to a service-account JSON file.
     """
     _ensure_initialized()
     try:
-        model = _build_model()
+        system_prompt = build_system_prompt(topic_name, topic_criteria)
+        model = _build_model(system_prompt)
         prompt = build_user_prompt(article_text, source_name)
         gen_config = GenerationConfig(
             # Was 2000; truncation caused json_decode errors on verbose
@@ -105,7 +116,7 @@ def extract_case_fields(article_text: str, source_name: str) -> dict:
                 "data": data, "model": EXTRACTION_MODEL,
                 "prompt_version": EXTRACTION_PROMPT_VERSION}
 
-    if not data.get("is_homicide_sentencing"):
+    if not data.get("is_match"):
         return {"status": "no_match", "data": data, "model": EXTRACTION_MODEL,
                 "prompt_version": EXTRACTION_PROMPT_VERSION}
 

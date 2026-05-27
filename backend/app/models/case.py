@@ -35,6 +35,13 @@ class Case(Base):
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     assigned_to = Column(String(64), nullable=True, index=True)
+    # Which Topic this case was collected under. Defaults to the seeded
+    # "Homicide Sentencings" topic at the DB level (server_default in
+    # migration 0010), so new inserts don't need to set it explicitly.
+    topic_id = Column(
+        UUID(as_uuid=True), ForeignKey("topics.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -3,9 +3,10 @@ import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { CaseRow } from "@/components/case-row";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { TEAM_MEMBERS } from "@/lib/types";
-import type { CaseListItem, User } from "@/lib/types";
+import type { CaseListItem, Topic, User } from "@/lib/types";
 
 const STATUS_TABS: Array<{ key: string; label: string; dot: string; activeBg: string; idleText: string }> = [
   { key: "",         label: "All",      dot: "bg-slate-400",   activeBg: "bg-slate-900",   idleText: "text-slate-700" },
@@ -66,12 +67,14 @@ function InboxInner() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [activeTopic, setActiveTopic] = useState<Topic | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastStatusRef = useRef<RunStatus | null>(null);
   const lastNewCasesRef = useRef<number>(0);
 
   useEffect(() => {
     api.me().then((u) => setUser(u as User)).catch(() => {});
+    api.getActiveTopic().then((t) => setActiveTopic(t as Topic)).catch(() => {});
   }, []);
 
   // Mirror current filter state into the URL so going back to /inbox
@@ -309,7 +312,19 @@ function InboxInner() {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Inbox</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Inbox</h1>
+            {activeTopic && (
+              <Link
+                href="/topics"
+                title="Switch topic"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Topic: {activeTopic.name}
+              </Link>
+            )}
+          </div>
           <p className="text-sm text-slate-500 mt-0.5">
             {total} case{total === 1 ? "" : "s"} matching your filters
           </p>

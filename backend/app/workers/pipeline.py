@@ -1,7 +1,7 @@
 from datetime import date as date_cls, datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.config import settings
-from app.models import Article, Case
+from app.models import Article, Case, Topic
 from app.sources.base import IngestedArticle
 from app.extraction.extractor import extract_case_fields
 from app.dedup.matcher import find_matching_case, normalize_name, merge_extracted_into_case
@@ -15,8 +15,13 @@ def _parse_date(s: str | None) -> date_cls | None:
     except ValueError:
         return None
 
-def process_article(db: Session, ia: IngestedArticle) -> dict:
-    """Idempotent: same URL twice = no-op on second call."""
+def process_article(db: Session, ia: IngestedArticle, topic: Topic | None = None) -> dict:
+    """Idempotent: same URL twice = no-op on second call.
+
+    `topic` (optional) drives the LLM extraction prompt and the recency
+    filter. When None, the legacy "Homicide Sentencings" defaults from
+    extractor.py + settings.sentencing_lookback_days are used.
+    """
     existing = db.query(Article).filter(Article.url == ia.url).one_or_none()
     if existing and existing.extraction_status in ("extracted", "no_match"):
         return {"skipped": True, "reason": "already processed"}
@@ -30,7 +35,15 @@ def process_article(db: Session, ia: IngestedArticle) -> dict:
         db.add(article)
         db.flush()  # so article.id exists
 
-    result = extract_case_fields(ia.raw_text, ia.source_name)
+    # Use topic-specific extraction criteria if a topic is active.
+    if topic is not None:
+        result = extract_case_fields(
+            ia.raw_text, ia.source_name,
+            topic_name=topic.name,
+            topic_criteria=topic.extraction_criteria,
+        )
+    else:
+        result = extract_case_fields(ia.raw_text, ia.source_name)
     article.extracted_json = result.get("data")
     article.extraction_model = result.get("model")
     article.extraction_error = result.get("error")
@@ -58,12 +71,14 @@ def process_article(db: Session, ia: IngestedArticle) -> dict:
         db.commit()
         return {"skipped": True, "reason": "no sentencing date extractable"}
 
-    # Recency filter: only ingest sentencings from the last N days.
-    cutoff = datetime.now(timezone.utc).date() - timedelta(days=settings.sentencing_lookback_days)
+    # Recency filter: use the active topic's recency_days if provided,
+    # otherwise fall back to the global setting.
+    recency_days = topic.recency_days if topic is not None else settings.sentencing_lookback_days
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=recency_days)
     if sentencing_date < cutoff:
         article.extraction_status = "no_match"
         db.commit()
-        return {"skipped": True, "reason": f"sentencing too old ({sentencing_date} < {cutoff})"}
+        return {"skipped": True, "reason": f"event too old ({sentencing_date} < {cutoff})"}
 
     # Only DEFENDANT_NAME is strictly required. State can be filled in by
     # the researcher; missing state stored as empty string.
@@ -97,6 +112,7 @@ def process_article(db: Session, ia: IngestedArticle) -> dict:
             investigating_agency=data.get("investigating_agency"),
             summary=data.get("summary"),
             status="new",
+            topic_id=topic.id if topic is not None else None,
         )
         case.content_score = compute_content_score(data)
         db.add(case)

@@ -47,6 +47,18 @@ export const api = {
   updateUser: (id: string, patch: object) =>
     call(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 
+  // Topics — saved search profiles that drive the pipeline.
+  listTopics: () => call("/api/topics"),
+  getActiveTopic: () => call("/api/topics/active"),
+  createTopic: (body: { name: string; queries: string[]; extraction_criteria: string; recency_days: number }) =>
+    call("/api/topics", { method: "POST", body: JSON.stringify(body) }),
+  updateTopic: (id: string, patch: object) =>
+    call(`/api/topics/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteTopic: (id: string) =>
+    call(`/api/topics/${id}`, { method: "DELETE" }),
+  activateTopic: (id: string) =>
+    call(`/api/topics/${id}/activate`, { method: "POST" }),
+
   runPipeline: () => call<{ run_id: string; status: string; already_running: boolean }>(
     "/api/admin/run-pipeline", { method: "POST" }
   ),

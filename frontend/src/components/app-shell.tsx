@@ -7,6 +7,7 @@ import type { User } from "@/lib/types";
 
 const NAV = [
   { href: "/inbox", label: "Inbox", icon: "📥" },
+  { href: "/topics", label: "Topics", icon: "🎯" },
   { href: "/sources", label: "Sources", icon: "📡", admin: true },
   { href: "/users", label: "Users", icon: "👥", admin: true },
 ];
