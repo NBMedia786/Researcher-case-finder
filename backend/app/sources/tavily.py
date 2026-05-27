@@ -9,7 +9,12 @@ TAVILY_URL = "https://api.tavily.com/search"
 # Tavily is an LLM-optimized web search API — natural-language friendly,
 # returns clean snippets + URLs. Free tier: 1000 searches/month.
 DEFAULT_QUERIES = [
-    "(sentenced OR sentencing OR sentence) AND (murder OR homicide) US",
+    "sentenced murder",
+    "sentenced homicide",
+    "sentence murder",
+    "sentence homicide",
+    "sentencing murder",
+    "sentencing homicide",
 ]
 
 

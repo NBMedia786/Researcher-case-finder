@@ -11,7 +11,12 @@ GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 # are actually covered). Queries are deliberately broader than NewsAPI's
 # because GDELT indexes thousands of local papers NewsAPI never sees.
 DEFAULT_QUERIES = [
-    "(sentenced OR sentencing OR sentence) (murder OR homicide) sourcecountry:US",
+    "sentenced murder sourcecountry:US",
+    "sentenced homicide sourcecountry:US",
+    "sentence murder sourcecountry:US",
+    "sentence homicide sourcecountry:US",
+    "sentencing murder sourcecountry:US",
+    "sentencing homicide sourcecountry:US",
 ]
 
 

@@ -11,7 +11,12 @@ SERPAPI_URL = "https://serpapi.com/search"
 # press releases, etc.) than GDELT or NewsAPI catch. This is the source that
 # replicates what Claude's web-search results look like.
 DEFAULT_QUERIES = [
-    "(sentenced OR sentencing OR sentence) (murder OR homicide)",
+    "sentenced murder",
+    "sentenced homicide",
+    "sentence murder",
+    "sentence homicide",
+    "sentencing murder",
+    "sentencing homicide",
 ]
 
 

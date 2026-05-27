@@ -10,7 +10,12 @@ COURTLISTENER_URL = "https://www.courtlistener.com/api/rest/v4/search/"
 # the ground truth. Free, optional API token (raises rate limit from 5000
 # to 50000/day).
 DEFAULT_QUERIES = [
-    "(sentenced OR sentencing OR sentence) AND (murder OR homicide)",
+    "sentenced murder",
+    "sentenced homicide",
+    "sentence murder",
+    "sentence homicide",
+    "sentencing murder",
+    "sentencing homicide",
 ]
 
 
