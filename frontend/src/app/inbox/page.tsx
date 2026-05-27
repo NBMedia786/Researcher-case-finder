@@ -621,8 +621,11 @@ function InboxInner() {
               return d;
             };
 
-            // Group preserving the order in `cases` (already sorted by score+date)
-            const groups: { key: string; label: string; items: CaseListItem[] }[] = [];
+            // Group cases by fetch date, then sort groups newest-first so
+            // today appears at the top, then yesterday, then older days.
+            // Sort key is the UTC midnight of each case's created_at day —
+            // independent of how Intl formats the date string.
+            const groups: { key: string; label: string; sortKey: number; items: CaseListItem[] }[] = [];
             const lookup = new Map<string, number>();
             for (const c of cases) {
               const key = dayFmt.format(new Date(c.created_at));
@@ -630,10 +633,23 @@ function InboxInner() {
               if (idx === undefined) {
                 idx = groups.length;
                 lookup.set(key, idx);
-                groups.push({ key, label: labelFor(c.created_at), items: [] });
+                const created = new Date(c.created_at);
+                groups.push({
+                  key,
+                  label: labelFor(c.created_at),
+                  // Use the max created_at seen for this group so far —
+                  // updated below as more cases land in it.
+                  sortKey: created.getTime(),
+                  items: [],
+                });
+              }
+              const created = new Date(c.created_at);
+              if (created.getTime() > groups[idx].sortKey) {
+                groups[idx].sortKey = created.getTime();
               }
               groups[idx].items.push(c);
             }
+            groups.sort((a, b) => b.sortKey - a.sortKey);
 
             return (
               <div className="space-y-6">
