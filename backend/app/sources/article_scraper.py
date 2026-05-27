@@ -49,6 +49,14 @@ def _is_safe_public_url(url: str) -> bool:
     LAN hosts). We resolve every hostname and reject any address in the
     loopback, private, link-local, or multicast ranges before issuing the
     HTTP request.
+
+    KNOWN LIMITATION (DNS-rebinding TOCTOU): we resolve via getaddrinfo here,
+    then httpx performs its OWN resolution at connect time — a fast DNS
+    flip between the two calls could land us on an internal IP. Mitigating
+    this fully requires connecting by literal IP with Host/SNI preserved,
+    which has its own correctness issues under TLS. Given this app's threat
+    model (URLs sourced only from reputable news APIs; no IMDS/IAM role on
+    the backend host) we accept this residual risk.
     """
     try:
         parsed = urlparse(url)
