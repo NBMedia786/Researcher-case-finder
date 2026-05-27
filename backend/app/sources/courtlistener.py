@@ -49,32 +49,42 @@ class CourtListenerSource(BaseSource):
                 continue
 
             for a in data.get("results", []) or []:
-                # CourtListener opinion search returns one record per case;
-                # the URL points to the case page; we use the snippet field
-                # for raw_text so Gemini can extract defendant/judge/sentence.
                 case_url = a.get("absolute_url") or ""
                 if case_url and not case_url.startswith("http"):
                     case_url = f"https://www.courtlistener.com{case_url}"
                 if not case_url:
                     continue
                 title = a.get("caseName") or a.get("caseNameShort") or ""
-                snippet_list = a.get("snippet") or a.get("snippets") or []
-                if isinstance(snippet_list, list):
-                    snippet = "\n".join(s for s in snippet_list if s)
-                else:
-                    snippet = str(snippet_list)
                 court = a.get("court") or "Federal Court"
                 judge = a.get("judge") or ""
                 date_filed = a.get("dateFiled") or ""
+                docket_number = a.get("docketNumber") or ""
 
-                # Build a richer raw_text the LLM can extract from
-                raw_text = "\n".join(filter(None, [
+                # The richest text lives in result.opinions[].snippet —
+                # actual passages from the opinion body. The CourtListener
+                # case page is AWS-WAF-protected and can't be scraped, so
+                # we rely entirely on the API's nested snippets here.
+                nested = a.get("opinions") or []
+                snippets: list[str] = []
+                if isinstance(nested, list):
+                    for op in nested:
+                        if isinstance(op, dict):
+                            s = op.get("snippet")
+                            if s:
+                                snippets.append(str(s))
+                combined_snippet = "\n\n---\n\n".join(snippets)
+
+                metadata_header = "\n".join(filter(None, [
                     f"Case: {title}",
                     f"Court: {court}",
                     f"Judge: {judge}" if judge else "",
+                    f"Docket: {docket_number}" if docket_number else "",
                     f"Date filed: {date_filed}" if date_filed else "",
-                    snippet,
                 ]))
+                raw_text = (
+                    f"{metadata_header}\n\n{combined_snippet}"
+                    if combined_snippet else metadata_header
+                )
 
                 pub_at = None
                 if date_filed:
