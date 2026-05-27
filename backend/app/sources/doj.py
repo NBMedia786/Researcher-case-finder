@@ -7,18 +7,14 @@ from app.sources.base import BaseSource, IngestedArticle
 
 DEFAULT_FEEDS = ["https://www.justice.gov/news/rss"]
 
-SENTENCING_KEYWORDS = (
-    "sentenced", "sentencing",
-    "life without parole", "life in prison",
-    "convicted of murder", "manslaughter",
-)
+SENTENCE_TERMS = ("sentenced", "sentencing", "sentence")
+HOMICIDE_TERMS = ("murder", "homicide")
 
 
 def _looks_like_homicide_sentencing(title: str, description: str) -> bool:
     blob = f"{title} {description}".lower()
-    has_sentence = any(k in blob for k in ("sentenced", "sentencing", "life in prison",
-                                            "life without parole"))
-    has_homicide = any(k in blob for k in ("murder", "homicide", "manslaughter", "killing"))
+    has_sentence = any(k in blob for k in SENTENCE_TERMS)
+    has_homicide = any(k in blob for k in HOMICIDE_TERMS)
     return has_sentence and has_homicide
 
 

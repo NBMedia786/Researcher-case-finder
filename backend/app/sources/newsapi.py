@@ -7,13 +7,7 @@ from app.sources.article_scraper import fetch_article_body
 NEWSAPI_URL = "https://newsapi.org/v2/everything"
 
 DEFAULT_QUERIES = [
-    '"sentenced to life" murder',
-    '"sentenced to death"',
-    '"life without parole" sentenced',
-    '"convicted of murder" sentenced',
-    '"sentenced to" manslaughter',
-    '"sentencing" murder homicide',
-    '"sentenced" homicide',
+    "(sentenced OR sentencing OR sentence) AND (murder OR homicide)",
 ]
 
 

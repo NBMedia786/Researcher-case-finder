@@ -9,12 +9,7 @@ TAVILY_URL = "https://api.tavily.com/search"
 # Tavily is an LLM-optimized web search API — natural-language friendly,
 # returns clean snippets + URLs. Free tier: 1000 searches/month.
 DEFAULT_QUERIES = [
-    "US homicide sentencing this week",
-    "convicted of murder sentenced life prison",
-    "sentenced to death murder verdict",
-    "life without parole sentenced homicide",
-    "first-degree murder sentencing US court",
-    "manslaughter sentenced years prison verdict",
+    "(sentenced OR sentencing OR sentence) AND (murder OR homicide) US",
 ]
 
 

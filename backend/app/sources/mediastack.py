@@ -6,12 +6,15 @@ from app.sources.article_scraper import fetch_article_body
 
 MEDIASTACK_URL = "http://api.mediastack.com/v1/news"
 
+# MediaStack uses comma-separated keywords (comma = AND). No OR support,
+# so we enumerate every combination of sentence-verb × homicide-noun.
 DEFAULT_QUERIES = [
     "sentenced,murder",
     "sentenced,homicide",
-    "convicted,manslaughter,sentenced",
-    "life without parole,sentenced",
-    "sentenced to death",
+    "sentencing,murder",
+    "sentencing,homicide",
+    "sentence,murder",
+    "sentence,homicide",
 ]
 
 
