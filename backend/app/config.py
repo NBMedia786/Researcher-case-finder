@@ -44,6 +44,11 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     log_level: str = "INFO"
+    # DEV ONLY: skip session-cookie auth and treat every request as the
+    # first admin user. Set to "true" in local .env to use the UI without
+    # signing in. NEVER set on the VPS — anyone hitting the public URL
+    # would have admin access.
+    dev_bypass_auth: bool = False
     frontend_url: str = "http://localhost:3000"
     backend_url: str = "http://localhost:8000"
     sentry_dsn: str = ""
