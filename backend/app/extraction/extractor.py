@@ -1,4 +1,5 @@
 import json
+import time
 import vertexai
 from vertexai.generative_models import GenerativeModel, GenerationConfig
 from app.config import settings
@@ -7,6 +8,15 @@ from app.extraction.prompts import (
 )
 
 EXTRACTION_MODEL = "gemini-2.5-pro"
+
+# Vertex Gemini rate-limits at the project/region level — under load it
+# returns HTTP 429 ("Resource exhausted"). Without retries we'd lose
+# real homicide-sentencing cases just because the API was busy. These
+# values are conservative: 5 attempts with exponential backoff caps at
+# ~75 seconds of wait per article, which is fine because the rest of
+# the pipeline (article scrape, JSON parse, DB insert) is much faster.
+_RATE_LIMIT_MAX_ATTEMPTS = 5
+_RATE_LIMIT_BASE_DELAY = 5  # seconds — doubles each attempt
 
 REQUIRED_KEYS = {
     "is_homicide_sentencing", "defendant_name", "victims", "charges",
@@ -42,16 +52,33 @@ def extract_case_fields(article_text: str, source_name: str) -> dict:
     _ensure_initialized()
     try:
         model = _build_model()
-        response = model.generate_content(
-            build_user_prompt(article_text, source_name),
-            generation_config=GenerationConfig(
-                # Was 2000; truncation caused json_decode errors on verbose
-                # articles. 8000 leaves comfortable headroom.
-                max_output_tokens=8000,
-                temperature=0.1,
-                response_mime_type="application/json",
-            ),
+        prompt = build_user_prompt(article_text, source_name)
+        gen_config = GenerationConfig(
+            # Was 2000; truncation caused json_decode errors on verbose
+            # articles. 8000 leaves comfortable headroom.
+            max_output_tokens=8000,
+            temperature=0.1,
+            response_mime_type="application/json",
         )
+        # Retry loop for 429 ("Resource exhausted") — without this we lose
+        # real homicide-sentencing cases when Vertex briefly rate-limits us.
+        response = None
+        last_err: Exception | None = None
+        for attempt in range(_RATE_LIMIT_MAX_ATTEMPTS):
+            try:
+                response = model.generate_content(prompt, generation_config=gen_config)
+                break
+            except Exception as e:
+                last_err = e
+                if "429" not in str(e) and "Resource exhausted" not in str(e):
+                    # Non-rate-limit error — surface immediately
+                    raise
+                if attempt == _RATE_LIMIT_MAX_ATTEMPTS - 1:
+                    raise
+                delay = _RATE_LIMIT_BASE_DELAY * (2 ** attempt)
+                time.sleep(delay)
+        if response is None:
+            raise last_err or RuntimeError("rate-limit retry exhausted")
         text = response.text.strip()
         if text.startswith("```"):
             text = text.strip("` \n")
