@@ -588,19 +588,69 @@ function InboxInner() {
               <span className="text-xs text-slate-500">{selectedIds.size} selected</span>
             )}
           </div>
-          <div className="space-y-3">
-            {cases.map(c => (
-              <CaseRow
-                key={c.id}
-                c={c}
-                isDragging={draggingCaseId === c.id}
-                onDragStart={(id) => setDraggingCaseId(id)}
-                onDragEnd={() => { setDraggingCaseId(null); setDropTarget(null); }}
-                selected={selectedIds.has(c.id)}
-                onToggleSelect={toggleSelect}
-              />
-            ))}
-          </div>
+          {/* Cases grouped by FETCH date (created_at), rendered IST. */}
+          {(() => {
+            const dayFmt = new Intl.DateTimeFormat("en-IN", {
+              timeZone: "Asia/Kolkata",
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            });
+            const todayIST = dayFmt.format(new Date());
+            const yesterdayIST = dayFmt.format(new Date(Date.now() - 86400000));
+
+            const labelFor = (iso: string): string => {
+              const d = dayFmt.format(new Date(iso));
+              if (d === todayIST) return `Today  ·  ${d}`;
+              if (d === yesterdayIST) return `Yesterday  ·  ${d}`;
+              return d;
+            };
+
+            // Group preserving the order in `cases` (already sorted by score+date)
+            const groups: { key: string; label: string; items: CaseListItem[] }[] = [];
+            const lookup = new Map<string, number>();
+            for (const c of cases) {
+              const key = dayFmt.format(new Date(c.created_at));
+              let idx = lookup.get(key);
+              if (idx === undefined) {
+                idx = groups.length;
+                lookup.set(key, idx);
+                groups.push({ key, label: labelFor(c.created_at), items: [] });
+              }
+              groups[idx].items.push(c);
+            }
+
+            return (
+              <div className="space-y-6">
+                {groups.map(group => (
+                  <section key={group.key}>
+                    <div className="flex items-center gap-3 mb-3 px-1">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        {group.label}
+                      </h3>
+                      <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">
+                        {group.items.length}
+                      </span>
+                      <div className="flex-1 h-px bg-slate-200" />
+                    </div>
+                    <div className="space-y-3">
+                      {group.items.map(c => (
+                        <CaseRow
+                          key={c.id}
+                          c={c}
+                          isDragging={draggingCaseId === c.id}
+                          onDragStart={(id) => setDraggingCaseId(id)}
+                          onDragEnd={() => { setDraggingCaseId(null); setDropTarget(null); }}
+                          selected={selectedIds.has(c.id)}
+                          onToggleSelect={toggleSelect}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            );
+          })()}
         </>
       )}
 

@@ -4,7 +4,13 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from app.db import Base
 
-ARTICLE_SOURCE_TYPE = ("news_api", "gdelt", "doj", "da_office", "courtlistener", "google_alert")
+ARTICLE_SOURCE_TYPE = (
+    "news_api", "gdelt", "doj", "da_office", "courtlistener", "google_alert",
+    # Added in migration 0009 for the new sources:
+    "web_search",     # serpapi, tavily
+    "rss",            # marshall_project, prnewswire
+    "court_records",  # courtlistener (new source emits this)
+)
 EXTRACTION_STATUS = ("pending", "extracted", "failed", "no_match")
 
 

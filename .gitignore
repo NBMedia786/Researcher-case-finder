@@ -42,3 +42,7 @@ build/
 ecosystem.config.js
 ecosystem.config.cjs
 ecosystem.config.mjs
+
+# Excel exports from export_articles.py — data dumps, not source
+backend/articles_export_*.xlsx
+articles_export_*.xlsx

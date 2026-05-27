@@ -17,6 +17,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # The new source rows use 'web_search' and 'court_records' values that
+    # don't exist in the original source_type enum. Extend it FIRST in an
+    # autocommit block (Postgres rule: ALTER TYPE ... ADD VALUE can't run
+    # inside a transaction), then do the inserts.
+    with op.get_context().autocommit_block():
+        op.execute(
+            "ALTER TYPE source_type ADD VALUE IF NOT EXISTS 'web_search'"
+        )
+        op.execute(
+            "ALTER TYPE source_type ADD VALUE IF NOT EXISTS 'court_records'"
+        )
+
     # New sources are seeded as is_active=false by default — they need API
     # keys configured in .env before they can do anything useful. Flip them
     # to active via the Sources UI (or SQL) after keys are set.
