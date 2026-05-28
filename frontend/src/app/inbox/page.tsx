@@ -396,19 +396,39 @@ function InboxInner() {
 
       {/* Unified filter bar */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mb-5 overflow-hidden">
-        {/* Search row */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100">
-          <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 110-16 8 8 0 010 16z" />
-          </svg>
-          <input
-            value={q}
-            onChange={(e) => { setPage(1); setQ(e.target.value); }}
-            placeholder="Search defendant name or case summary…"
-            className="flex-1 bg-transparent text-sm placeholder:text-slate-400 focus:outline-none"
-          />
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Filter row — name search + state, each as its own pill so it's
+            obvious they're separate inputs. Subtle tinted background marks
+            this whole row as "filter existing cases" (vs. the Run-search
+            bar at the top, which fetches new cases). */}
+        <div className="flex items-center gap-3 px-4 py-3 bg-slate-50/60 border-b border-slate-100">
+          {/* Name / summary search pill */}
+          <label className="flex-1 flex items-center gap-2.5 bg-white rounded-lg border border-slate-200 px-3.5 py-2 hover:border-slate-300 focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-200 transition-all cursor-text">
+            <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 110-16 8 8 0 010 16z" />
+            </svg>
+            <input
+              value={q}
+              onChange={(e) => { setPage(1); setQ(e.target.value); }}
+              placeholder="Filter cases by defendant or summary…"
+              className="flex-1 bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none min-w-0"
+            />
+            {q && (
+              <button
+                type="button"
+                onClick={() => { setPage(1); setQ(""); }}
+                aria-label="Clear search"
+                className="text-slate-300 hover:text-slate-600 active:scale-90 transition flex-shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </label>
+
+          {/* State filter pill */}
+          <label className="flex items-center gap-2 bg-white rounded-lg border border-slate-200 px-3 py-2 hover:border-slate-300 focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-200 transition-all cursor-text">
+            <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             <input
@@ -416,9 +436,21 @@ function InboxInner() {
               onChange={(e) => { setPage(1); setState(e.target.value.toUpperCase()); }}
               placeholder="State"
               maxLength={2}
-              className="w-12 bg-transparent text-sm placeholder:text-slate-400 focus:outline-none uppercase tracking-wider font-medium text-slate-700"
+              className="w-14 bg-transparent text-sm uppercase tracking-wider font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal placeholder:tracking-normal focus:outline-none"
             />
-          </div>
+            {state && (
+              <button
+                type="button"
+                onClick={() => { setPage(1); setState(""); }}
+                aria-label="Clear state"
+                className="text-slate-300 hover:text-slate-600 active:scale-90 transition flex-shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </label>
         </div>
 
         {/* Status segmented control */}
