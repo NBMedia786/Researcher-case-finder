@@ -29,6 +29,20 @@ def normalize_name(name: str) -> str:
         collapsed = _SUFFIX_RE.sub("", collapsed).strip()
     return collapsed
 
+
+def first_last_key(normalized_name: str) -> str:
+    """Return 'first last' token of a normalized name, dropping middle names.
+
+    Used as a fuzzy match key to catch the same defendant across articles
+    that disagree on the middle name — e.g. one article says
+    "Michael Cornelius Watson" and another says "Michael Watson". When
+    the date + state also match, that's the same case.
+    """
+    tokens = normalized_name.split()
+    if len(tokens) <= 1:
+        return normalized_name
+    return f"{tokens[0]} {tokens[-1]}"
+
 def find_matching_case(
     db: Session,
     defendant_name: str,
@@ -59,6 +73,7 @@ def find_matching_case(
     if sentencing_date is not None:
         lo = sentencing_date - timedelta(days=window_days)
         hi = sentencing_date + timedelta(days=window_days)
+        # 1a. Exact normalized-name match within date window.
         match = (
             db.query(Case)
             .filter(Case.defendant_name_normalized == nname)
@@ -68,8 +83,23 @@ def find_matching_case(
         )
         if match is not None:
             return match
+        # 1b. Fuzzy fallback: same first + last token, same state, same date
+        # window. Catches "Michael Cornelius Watson" vs "Michael Watson"
+        # for the same sentencing. Date+state gating keeps this safe from
+        # common-name false positives.
+        fl_key = first_last_key(nname)
+        candidates = (
+            db.query(Case)
+            .filter(Case.state == state_upper)
+            .filter(Case.sentencing_date.between(lo, hi))
+            .all()
+        )
+        for cand in candidates:
+            if first_last_key(cand.defendant_name_normalized or "") == fl_key:
+                return cand
 
-    # Fall back to defendant + state, no date constraint.
+    # Fall back to defendant + state, no date constraint (exact only —
+    # the fuzzy fallback above is intentionally date-gated to stay safe).
     return (
         db.query(Case)
         .filter(Case.defendant_name_normalized == nname)
