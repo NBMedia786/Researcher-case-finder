@@ -12,6 +12,29 @@ from app.workers.tasks import _build_source
 router = APIRouter()
 
 
+_SOURCE_PRIORITY = {
+    # Run high-signal web-search APIs FIRST — they return small numbers of
+    # high-quality results curated by search engines, so researchers see
+    # cases in the inbox within minutes of clicking Run pipeline.
+    "tavily": 1,
+    "serpapi": 2,
+    # News-search APIs (medium volume, medium speed).
+    "newsapi": 3,
+    "newsdata": 4,
+    "gnews": 5,
+    "mediastack": 6,
+    # Court records + curated RSS feeds (fast, narrow scope).
+    "courtlistener": 7,
+    "marshall_project": 8,
+    "prnewswire": 9,
+    "doj": 10,
+    # GDELT last — it's the broadest (potentially 1,500+ articles) AND
+    # the slowest. Running it last means we already have the easy wins
+    # in the inbox if GDELT stalls out or hits rate limits.
+    "gdelt": 99,
+}
+
+
 def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
     """Long-running pipeline body. Runs in a background thread with its own
     DB session. Updates the PipelineRun row as it progresses."""
@@ -20,7 +43,8 @@ def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
         run = db.query(PipelineRun).filter(PipelineRun.id == run_id).one()
         # Active topic drives queries + LLM criteria + recency filter.
         topic = db.query(Topic).filter(Topic.is_active.is_(True)).one_or_none()
-        sources = db.query(Source).filter(Source.is_active).order_by(Source.name).all()
+        sources = db.query(Source).filter(Source.is_active).all()
+        sources.sort(key=lambda s: (_SOURCE_PRIORITY.get(s.name, 50), s.name))
 
         for source in sources:
             run.current_source = source.name
