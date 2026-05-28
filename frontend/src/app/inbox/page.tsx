@@ -324,30 +324,42 @@ function InboxInner() {
         </div>
       )}
 
-      <div className="mb-6">
-        <div className="flex items-end justify-between gap-4 mb-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Inbox</h1>
-            <p className="text-sm text-slate-500 mt-0.5">
-              {total} case{total === 1 ? "" : "s"} matching your filters
-            </p>
-          </div>
-          {activeTopic && (
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Last run: {activeTopic.name}
-            </div>
-          )}
+      {/* Page header — name + count on the left, last-run context on the right. */}
+      <div className="flex items-end justify-between gap-4 mb-5">
+        <div>
+          <h1 className="text-[28px] leading-tight font-bold tracking-tight text-slate-900">Inbox</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            <span className="font-semibold text-slate-700">{total}</span> case{total === 1 ? "" : "s"} matching your filters
+          </p>
         </div>
+        {activeTopic && (
+          <div className="hidden sm:flex flex-col items-end gap-0.5">
+            <span className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Last search</span>
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className={"w-1.5 h-1.5 rounded-full bg-emerald-500 " + (isRunning ? "animate-pulse" : "")} />
+              {activeTopic.name}
+            </div>
+          </div>
+        )}
+      </div>
 
-        {/* Google-style search-and-run — type keywords, press Enter or click
-            Run, and the pipeline fetches articles for those keywords. The
-            search text becomes the tag shown on each new case below. */}
-        {user && (
+      {/* Pull-new-cases search card — clearly labeled as a *fetch from the web*
+          action (different from the filter row inside the inbox card). */}
+      {user && (
+        <section className="mb-5">
+          <div className="flex items-center justify-between mb-1.5 px-0.5">
+            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold inline-flex items-center gap-1.5">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Pull new cases from the web
+            </span>
+            <span className="text-[11px] text-slate-400 hidden sm:inline">Press Enter to run</span>
+          </div>
           <form
             onSubmit={(e) => { e.preventDefault(); startSearch(); }}
             className={
-              "bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow " +
+              "bg-white rounded-2xl border shadow-sm hover:shadow transition-all " +
               "flex items-center gap-2 pl-5 pr-2 py-2 " +
               (isRunning ? "border-blue-200 bg-blue-50/30" : "border-slate-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100")
             }
@@ -359,8 +371,8 @@ function InboxInner() {
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               disabled={isRunning}
-              placeholder='Search for cases — e.g. "kidnapping california", "murder for hire texas"'
-              className="flex-1 bg-transparent text-base placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
+              placeholder='Type keywords — e.g. "kidnapping california" or "murder for hire texas"'
+              className="flex-1 bg-transparent text-[15px] placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
             />
             <button
               type="submit"
@@ -391,16 +403,43 @@ function InboxInner() {
               )}
             </button>
           </form>
-        )}
-      </div>
+        </section>
+      )}
 
-      {/* Unified filter bar */}
+      {/* Filter card — narrow what's already in the inbox by name, state,
+          status, and assignee. Visually grouped + clearly headed so it
+          reads as one cohesive controls area. */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mb-5 overflow-hidden">
+        {/* Filter card header — title + clear-all action */}
+        <div className="flex items-center justify-between px-5 pt-4 pb-1">
+          <div className="inline-flex items-center gap-2">
+            <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            <span className="text-[11px] uppercase tracking-widest text-slate-500 font-semibold">Filters</span>
+            {(q || state || status || assignedTo) && (
+              <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full">
+                Active
+              </span>
+            )}
+          </div>
+          {(q || state || status || assignedTo) && (
+            <button
+              type="button"
+              onClick={() => { setPage(1); setQ(""); setState(""); setStatus(""); setAssignedTo(""); }}
+              className="text-xs font-medium text-slate-500 hover:text-slate-900 transition inline-flex items-center gap-1"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Clear filters
+            </button>
+          )}
+        </div>
+
         {/* Filter row — name search + state, each as its own pill so it's
-            obvious they're separate inputs. Subtle tinted background marks
-            this whole row as "filter existing cases" (vs. the Run-search
-            bar at the top, which fetches new cases). */}
-        <div className="flex items-center gap-3 px-4 py-3 bg-slate-50/60 border-b border-slate-100">
+            obvious they're separate inputs. */}
+        <div className="flex items-center gap-3 px-5 py-3">
           {/* Name / summary search pill */}
           <label className="flex-1 flex items-center gap-2.5 bg-white rounded-lg border border-slate-200 px-3.5 py-2 hover:border-slate-300 focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-200 transition-all cursor-text">
             <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -453,44 +492,49 @@ function InboxInner() {
           </label>
         </div>
 
-        {/* Status segmented control */}
-        <div className="flex items-center gap-1 px-4 py-3 border-b border-slate-100 overflow-x-auto">
-          <span className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold mr-3 flex-shrink-0">Status</span>
-          {STATUS_TABS.map(tab => {
-            const n = tab.key === "" ? (counts.all ?? 0) : (counts[tab.key] ?? 0);
-            const active = status === tab.key;
-            return (
-              <button
-                key={tab.key || "all"}
-                onClick={() => { setPage(1); setStatus(tab.key); }}
-                className={
-                  "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-slate-400 whitespace-nowrap " +
-                  (active
-                    ? `${tab.activeBg} text-white shadow-sm`
-                    : `${tab.idleText} hover:bg-slate-100`)
-                }
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-white/70" : tab.dot}`} />
-                {tab.label}
-                <span className={
-                  "inline-flex items-center justify-center min-w-[1.25rem] px-1.5 rounded-md text-[10px] font-semibold " +
-                  (active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600")
-                }>
-                  {n}
-                </span>
-              </button>
-            );
-          })}
+        {/* Status segmented control — sits on a tinted band so it reads as
+            a grouped control, with the section label stacked above. */}
+        <div className="px-5 py-3 bg-slate-50/60 border-y border-slate-100">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mb-2">Status</div>
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            {STATUS_TABS.map(tab => {
+              const n = tab.key === "" ? (counts.all ?? 0) : (counts[tab.key] ?? 0);
+              const active = status === tab.key;
+              return (
+                <button
+                  key={tab.key || "all"}
+                  onClick={() => { setPage(1); setStatus(tab.key); }}
+                  className={
+                    "inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-slate-400 whitespace-nowrap border " +
+                    (active
+                      ? `${tab.activeBg} text-white border-transparent shadow-sm`
+                      : `bg-white ${tab.idleText} border-slate-200 hover:border-slate-300 hover:shadow-sm`)
+                  }
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-white/70" : tab.dot}`} />
+                  {tab.label}
+                  <span className={
+                    "inline-flex items-center justify-center min-w-[1.25rem] px-1.5 rounded-md text-[10px] font-semibold " +
+                    (active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600")
+                  }>
+                    {n}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Assignee avatar row */}
+        {/* Assignee avatar row — same chip pattern as status so the whole
+            card has one consistent visual language. */}
         <div className={
-          "flex items-center gap-2 px-4 py-3 overflow-x-auto transition-colors " +
+          "px-5 py-3 transition-colors " +
           (isDraggingCase ? "bg-indigo-50/40" : "")
         }>
-          <span className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold mr-2 flex-shrink-0">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mb-2">
             {isDraggingCase ? "↓ Drop on a name to assign" : "Assignee"}
-          </span>
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto">
           {/* Everyone */}
           {(() => {
             const active = assignedTo === "";
@@ -608,6 +652,7 @@ function InboxInner() {
               </button>
             );
           })}
+          </div>
         </div>
       </div>
 

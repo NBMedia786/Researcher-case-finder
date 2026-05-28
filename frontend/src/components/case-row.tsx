@@ -107,10 +107,13 @@ export function CaseRow({ c, onDragStart, onDragEnd, isDragging, selected, onTog
             </span>
             {c.topic_name && (
               <span
-                className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700 border border-emerald-200"
-                title="Topic this case was collected under"
+                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium bg-slate-100 text-slate-600 border border-slate-200"
+                title="Search this case was collected under"
               >
-                🎯 {c.topic_name}
+                <svg className="w-2.5 h-2.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                {c.topic_name}
               </span>
             )}
             {c.assigned_to && (
