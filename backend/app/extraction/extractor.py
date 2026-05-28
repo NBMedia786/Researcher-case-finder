@@ -12,12 +12,15 @@ EXTRACTION_MODEL = "gemini-2.5-pro"
 
 # Vertex Gemini rate-limits at the project/region level — under load it
 # returns HTTP 429 ("Resource exhausted"). Without retries we'd lose
-# real homicide-sentencing cases just because the API was busy. These
-# values are conservative: 5 attempts with exponential backoff caps at
-# ~75 seconds of wait per article, which is fine because the rest of
-# the pipeline (article scrape, JSON parse, DB insert) is much faster.
-_RATE_LIMIT_MAX_ATTEMPTS = 5
-_RATE_LIMIT_BASE_DELAY = 5  # seconds — doubles each attempt
+# real homicide-sentencing cases just because the API was busy.
+#
+# Backoff sequence with these values: 5s, 10s, 20s, 40s, 80s, 120s, 120s, 120s
+# (capped at MAX_DELAY). Total worst-case wait per article: ~515s. Higher
+# than the article-scrape and DB-write costs combined, but it's only paid
+# when Vertex actually rate-limits us — most articles finish on attempt 1.
+_RATE_LIMIT_MAX_ATTEMPTS = 8
+_RATE_LIMIT_BASE_DELAY = 5     # seconds — doubles each attempt
+_RATE_LIMIT_MAX_DELAY = 120    # cap so we don't sleep 640s on the final attempt
 
 REQUIRED_KEYS = {
     "is_match", "defendant_name", "victims", "charges",
@@ -86,7 +89,7 @@ def extract_case_fields(
                     raise
                 if attempt == _RATE_LIMIT_MAX_ATTEMPTS - 1:
                     raise
-                delay = _RATE_LIMIT_BASE_DELAY * (2 ** attempt)
+                delay = min(_RATE_LIMIT_BASE_DELAY * (2 ** attempt), _RATE_LIMIT_MAX_DELAY)
                 time.sleep(delay)
         if response is None:
             raise last_err or RuntimeError("rate-limit retry exhausted")

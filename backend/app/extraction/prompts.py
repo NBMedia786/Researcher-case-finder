@@ -6,11 +6,20 @@ EXTRACTION_PROMPT_VERSION = "v2"
 # defends against migration ordering bugs).
 DEFAULT_TOPIC_NAME = "Homicide Sentencings"
 DEFAULT_TOPIC_CRITERIA = (
-    "An article reporting that a defendant has been sentenced in court "
-    "for a homicide-related offense — murder, manslaughter, or related "
-    "charges. Set is_match=true only when a sentencing has actually "
-    "occurred (not merely an arrest, indictment, trial, or appeal) AND "
-    "the underlying offense is a homicide."
+    "An article reporting that a defendant has been sentenced in a US "
+    "court for a homicide-related offense.\n\n"
+    "Set is_match=true when:\n"
+    "(a) a sentencing has occurred — not merely an arrest, indictment, "
+    "mid-trial, or appeal — AND\n"
+    "(b) the underlying charge is one of: murder (any degree), "
+    "manslaughter (voluntary, involuntary, or vehicular), homicide, "
+    "attempted murder, murder-for-hire, conspiracy to commit murder, "
+    "solicitation of murder, accessory to murder, or any conviction "
+    "where the defendant caused or attempted to cause a death.\n\n"
+    "Set is_match=false if:\n"
+    "- only arrest or indictment, no sentencing yet\n"
+    "- appeal or post-conviction motion only\n"
+    "- case is outside the USA"
 )
 
 
@@ -63,7 +72,11 @@ Set is_match=false if:
 - the event described is outside the United States
 - the article is opinion/analysis/retrospective, not a news report of a
   specific recent event
-- the relevant event has not yet occurred (e.g. an upcoming hearing)
+- the relevant event has not yet occurred — including but not limited to
+  phrases like "faces sentencing", "will be sentenced", "could be
+  sentenced", "is set to be sentenced", "awaiting sentencing",
+  "expected to be sentenced", "upcoming hearing", "trial begins",
+  "to stand trial", "pre-trial hearing"
 
 If a field doesn't apply to this topic (e.g. sentence_years for a
 kidnapping article), set it to null. Always include the field key.
