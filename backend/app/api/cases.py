@@ -6,9 +6,20 @@ from sqlalchemy import or_
 from uuid import UUID as UUID_T, UUID
 from pydantic import BaseModel as _BM
 from app.db import get_db
-from app.models import Case, Article, AuditLog
+from app.models import Case, Article, AuditLog, Topic
 from app.auth.dependencies import current_user
 from app.schemas.case import CaseListResponse, CaseListItem, CaseDetail, CaseArticle, CaseUpdate
+
+
+def _build_list_item(case: Case, topic_name_lookup: dict) -> CaseListItem:
+    """Serialize a Case with its joined topic_name."""
+    base = {
+        c.name: getattr(case, c.name)
+        for c in Case.__table__.columns
+        if c.name in CaseListItem.model_fields and c.name != "topic_name"
+    }
+    base["topic_name"] = topic_name_lookup.get(case.topic_id)
+    return CaseListItem.model_validate(base)
 
 
 def _as_uuid(val) -> UUID | None:
@@ -61,8 +72,14 @@ def list_cases(
              .offset((page - 1) * page_size)
              .limit(page_size)
              .all())
+    # Bulk-lookup topic names for this page (avoids per-row queries).
+    topic_ids = {c.topic_id for c in items if c.topic_id is not None}
+    topic_name_lookup: dict = {}
+    if topic_ids:
+        for t in db.query(Topic).filter(Topic.id.in_(topic_ids)).all():
+            topic_name_lookup[t.id] = t.name
     return CaseListResponse(
-        items=[CaseListItem.model_validate(c) for c in items],
+        items=[_build_list_item(c, topic_name_lookup) for c in items],
         total=total, page=page, page_size=page_size,
     )
 
@@ -109,7 +126,11 @@ def get_case(case_id: UUID_T, db: Session = Depends(get_db), user=Depends(curren
     if c is None:
         raise HTTPException(status_code=404, detail="case not found")
     arts = db.query(Article).filter(Article.case_id == case_id).all()
-    base = CaseListItem.model_validate(c).model_dump()
+    topic_name = None
+    if c.topic_id is not None:
+        t = db.query(Topic).filter(Topic.id == c.topic_id).one_or_none()
+        topic_name = t.name if t else None
+    base = _build_list_item(c, {c.topic_id: topic_name} if c.topic_id else {}).model_dump()
     return CaseDetail(
         **base,
         victims=c.victims or [],

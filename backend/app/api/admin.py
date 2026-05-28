@@ -2,10 +2,13 @@ import threading
 import uuid as uuid_lib
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db import get_db, SessionLocal
 from app.models import Source, PipelineRun, Topic, User
 from app.auth.dependencies import current_user
+from app.extraction.prompts import DEFAULT_TOPIC_CRITERIA
 from app.workers.pipeline import process_article
 from app.workers.tasks import _build_source
 
@@ -153,6 +156,101 @@ def start_pipeline(
     thread.start()
 
     return {"run_id": run_id, "status": "running", "already_running": False}
+
+
+class RunSearchRequest(BaseModel):
+    search_text: str
+    recency_days: int | None = None
+
+
+@router.post("/run-search")
+def run_search(
+    body: RunSearchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Google-style search-and-run: take keyword text, create or reuse a
+    Topic with that name + query, activate it, and start the pipeline.
+
+    The search text becomes both the topic name (shown as a chip on each
+    case row) and the single query string sent to every source. Extraction
+    criteria defaults to the broad homicide-sentencing template so cases
+    that surface for the keywords are still vetted by the LLM."""
+    text = (body.search_text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="search_text required")
+    if len(text) > 128:
+        raise HTTPException(status_code=400, detail="search_text too long (max 128)")
+
+    # Reuse an existing topic with the same name (case-insensitive) instead
+    # of piling up duplicates each time the researcher re-runs the same query.
+    topic = (
+        db.query(Topic)
+        .filter(func.lower(Topic.name) == text.lower())
+        .one_or_none()
+    )
+    if topic is None:
+        topic = Topic(
+            name=text,
+            queries=[text],
+            extraction_criteria=DEFAULT_TOPIC_CRITERIA,
+            recency_days=body.recency_days or 14,
+            is_active=False,
+            is_default=False,
+        )
+        db.add(topic)
+        db.flush()
+    else:
+        # Keep the queries in sync with the latest text typed (researchers
+        # may refine wording across runs of the "same" search).
+        if topic.queries != [text]:
+            topic.queries = [text]
+        if body.recency_days:
+            topic.recency_days = body.recency_days
+
+    # Activate this topic (and only this one). Partial unique index on
+    # is_active=true forces us to clear others first.
+    db.query(Topic).filter(
+        Topic.is_active.is_(True), Topic.id != topic.id
+    ).update({"is_active": False}, synchronize_session=False)
+    topic.is_active = True
+    db.commit()
+    db.refresh(topic)
+
+    # Re-attach to an already-running pipeline rather than spawning a second.
+    existing_run = (
+        db.query(PipelineRun)
+        .filter(PipelineRun.status == "running")
+        .order_by(PipelineRun.started_at.desc())
+        .first()
+    )
+    if existing_run is not None:
+        return {
+            "run_id": str(existing_run.id),
+            "status": existing_run.status,
+            "already_running": True,
+            "topic_id": str(topic.id),
+            "topic_name": topic.name,
+        }
+
+    run = PipelineRun(status="running", started_by=user.id)
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    thread = threading.Thread(
+        target=_run_pipeline_in_thread,
+        args=(str(run.id), str(user.id)),
+        daemon=True,
+    )
+    thread.start()
+    return {
+        "run_id": str(run.id),
+        "status": "running",
+        "already_running": False,
+        "topic_id": str(topic.id),
+        "topic_name": topic.name,
+    }
 
 
 @router.get("/pipeline-status")

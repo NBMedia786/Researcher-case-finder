@@ -62,6 +62,17 @@ export const api = {
   runPipeline: () => call<{ run_id: string; status: string; already_running: boolean }>(
     "/api/admin/run-pipeline", { method: "POST" }
   ),
+  runSearch: (search_text: string, recency_days?: number) =>
+    call<{
+      run_id: string;
+      status: string;
+      already_running: boolean;
+      topic_id: string;
+      topic_name: string;
+    }>("/api/admin/run-search", {
+      method: "POST",
+      body: JSON.stringify({ search_text, recency_days }),
+    }),
   pipelineStatus: () => call<{
     run: null | {
       id: string;

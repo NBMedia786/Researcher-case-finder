@@ -100,11 +100,19 @@ export function CaseRow({ c, onDragStart, onDragEnd, isDragging, selected, onTog
 
       <div className={"flex items-start justify-between gap-4 " + (onToggleSelect ? "pl-12" : "pl-3")}>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-1.5">
+          <div className="flex items-center gap-3 mb-1.5 flex-wrap">
             <Stars score={c.content_score} />
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${style.bg} ${style.text}`}>
               {style.label}
             </span>
+            {c.topic_name && (
+              <span
+                className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700 border border-emerald-200"
+                title="Topic this case was collected under"
+              >
+                🎯 {c.topic_name}
+              </span>
+            )}
             {c.assigned_to && (
               <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-50 text-indigo-700">
                 👤 {c.assigned_to}

@@ -3,7 +3,6 @@ import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { CaseRow } from "@/components/case-row";
-import Link from "next/link";
 import { api } from "@/lib/api";
 import { TEAM_MEMBERS } from "@/lib/types";
 import type { CaseListItem, Topic, User } from "@/lib/types";
@@ -68,14 +67,19 @@ function InboxInner() {
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [activeTopic, setActiveTopic] = useState<Topic | null>(null);
+  const [searchText, setSearchText] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastStatusRef = useRef<RunStatus | null>(null);
   const lastNewCasesRef = useRef<number>(0);
 
-  useEffect(() => {
-    api.me().then((u) => setUser(u as User)).catch(() => {});
+  const refreshActiveTopic = useCallback(() => {
     api.getActiveTopic().then((t) => setActiveTopic(t as Topic)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    api.me().then((u) => setUser(u as User)).catch(() => {});
+    refreshActiveTopic();
+  }, [refreshActiveTopic]);
 
   // Mirror current filter state into the URL so going back to /inbox
   // (from a case detail page, browser Back, or refresh) restores the same tab.
@@ -165,7 +169,7 @@ function InboxInner() {
     };
   }, [user, poll]);
 
-  async function startPipeline() {
+  function primeRunningState(msg: string) {
     lastStatusRef.current = "running";
     setRun({
       id: "pending",
@@ -176,26 +180,36 @@ function InboxInner() {
       total_new_cases: 0,
       errors: [],
     });
-    setToast({ type: "ok", msg: "Pipeline starting…" });
+    setToast({ type: "ok", msg });
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(poll, 1500);
+  }
 
+  function clearRunningState() {
+    setRun(null);
+    lastStatusRef.current = null;
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }
+
+  async function startSearch() {
+    const text = searchText.trim();
+    if (!text || isRunning) return;
+    primeRunningState(`Searching for “${text}”…`);
     try {
-      const data = await api.runPipeline();
+      const data = await api.runSearch(text);
       if (data.already_running) {
         setToast({ type: "ok", msg: "A pipeline run is already in progress — re-attached." });
       } else {
-        setToast({ type: "ok", msg: "Pipeline started. Watching progress live…" });
+        setToast({ type: "ok", msg: `✓ Running search for “${data.topic_name}”` });
       }
+      refreshActiveTopic();
       poll();
       setTimeout(() => setToast(null), 5000);
     } catch (e: unknown) {
-      setRun(null);
-      lastStatusRef.current = null;
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+      clearRunningState();
       const msg = e instanceof Error ? e.message : "unknown error";
       setToast({ type: "err", msg: `Failed to start: ${msg.slice(0, 200)}` });
     }
@@ -310,54 +324,73 @@ function InboxInner() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-2">
+      <div className="mb-6">
+        <div className="flex items-end justify-between gap-4 mb-3">
+          <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">Inbox</h1>
-            {activeTopic && (
-              <Link
-                href="/topics"
-                title="Switch topic"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Topic: {activeTopic.name}
-              </Link>
-            )}
+            <p className="text-sm text-slate-500 mt-0.5">
+              {total} case{total === 1 ? "" : "s"} matching your filters
+            </p>
           </div>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {total} case{total === 1 ? "" : "s"} matching your filters
-          </p>
+          {activeTopic && (
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Last run: {activeTopic.name}
+            </div>
+          )}
         </div>
+
+        {/* Google-style search-and-run — type keywords, press Enter or click
+            Run, and the pipeline fetches articles for those keywords. The
+            search text becomes the tag shown on each new case below. */}
         {user && (
-          <button
-            onClick={startPipeline}
-            disabled={isRunning}
+          <form
+            onSubmit={(e) => { e.preventDefault(); startSearch(); }}
             className={
-              "inline-flex items-center gap-2 text-white text-sm font-semibold rounded-lg px-5 py-2.5 " +
-              "transition-all shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 " +
-              (isRunning
-                ? "bg-slate-400 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700 hover:shadow-lg active:scale-95 focus:ring-blue-500 cursor-pointer")
+              "bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow " +
+              "flex items-center gap-2 pl-5 pr-2 py-2 " +
+              (isRunning ? "border-blue-200 bg-blue-50/30" : "border-slate-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100")
             }
           >
-            {isRunning ? (
-              <>
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Running…
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Run pipeline now
-              </>
-            )}
-          </button>
+            <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 110-16 8 8 0 010 16z" />
+            </svg>
+            <input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              disabled={isRunning}
+              placeholder='Search for cases — e.g. "kidnapping california", "murder for hire texas"'
+              className="flex-1 bg-transparent text-base placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={isRunning || !searchText.trim()}
+              className={
+                "inline-flex items-center gap-2 text-white text-sm font-semibold rounded-xl px-5 py-2.5 " +
+                "transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 " +
+                (isRunning || !searchText.trim()
+                  ? "bg-slate-300 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700 active:scale-95 focus:ring-blue-500 shadow-sm hover:shadow")
+              }
+            >
+              {isRunning ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Running…
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Run
+                </>
+              )}
+            </button>
+          </form>
         )}
       </div>
 
@@ -556,22 +589,11 @@ function InboxInner() {
             📭
           </div>
           <h3 className="text-lg font-semibold text-slate-900 mb-1">No cases yet</h3>
-          <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
+          <p className="text-sm text-slate-500 mb-2 max-w-sm mx-auto">
             {status || state || q || assignedTo
               ? "No cases match your current filters. Try clearing them."
-              : "Run the pipeline to ingest news articles and populate the inbox."}
+              : "Type keywords above (e.g. “kidnapping california”) and click Run to fetch cases."}
           </p>
-          {user && !status && !state && !q && !assignedTo && !isRunning && (
-            <button
-              onClick={startPipeline}
-              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-semibold rounded-lg px-5 py-2.5 transition-all shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Run pipeline now
-            </button>
-          )}
         </div>
       ) : (
         <>

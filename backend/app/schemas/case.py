@@ -19,6 +19,8 @@ class CaseListItem(BaseModel):
     assigned_to: Optional[str] = None
     summary: Optional[str]
     created_at: datetime
+    topic_id: Optional[UUID] = None
+    topic_name: Optional[str] = None
 
     class Config:
         from_attributes = True

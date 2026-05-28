@@ -27,6 +27,8 @@ export interface CaseListItem {
   assigned_to: string | null;
   summary: string | null;
   created_at: string;
+  topic_id: string | null;
+  topic_name: string | null;
 }
 
 export interface CaseArticle {
