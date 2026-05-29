@@ -89,6 +89,11 @@ function InboxInner() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastStatusRef = useRef<RunStatus | null>(null);
   const lastNewCasesRef = useRef<number>(0);
+  // Tracks the run_id we expect pipeline-status to be reporting on.
+  // Without this guard, polling started before a fresh run-search
+  // resolves could read the LATEST run (e.g. an old cancelled one)
+  // and trip the finish-toast logic with stale data.
+  const expectedRunIdRef = useRef<string | null>(null);
 
   const refreshActiveTopic = useCallback(() => {
     api.getActiveTopic().then((t) => setActiveTopic(t as Topic)).catch(() => {});
@@ -144,6 +149,13 @@ function InboxInner() {
   const poll = useCallback(async () => {
     try {
       const data = await api.pipelineStatus();
+      // Ignore polls that aren't about the run THIS client started or
+      // attached to. Without this guard, an old finished run sitting at
+      // the top of the pipeline_runs table can trick the finish-toast
+      // logic into firing right after the user clicks Run.
+      if (expectedRunIdRef.current && data.run && data.run.id !== expectedRunIdRef.current) {
+        return;
+      }
       setRun(data.run);
       if (data.run) {
         if (data.run.total_new_cases > lastNewCasesRef.current) {
@@ -162,6 +174,11 @@ function InboxInner() {
               setToast({
                 type: "ok",
                 msg: `✓ Pipeline finished — ${data.run.total_new_cases} new cases (fetched ${data.run.total_fetched}, extracted ${data.run.total_extracted})`,
+              });
+            } else if (data.run.status === "cancelled") {
+              setToast({
+                type: "ok",
+                msg: `■ Pipeline stopped — ${data.run.total_new_cases} new cases before cancel (fetched ${data.run.total_fetched})`,
               });
             } else {
               setToast({
@@ -183,8 +200,11 @@ function InboxInner() {
     if (!user) return;
     api.pipelineStatus().then((d) => {
       setRun(d.run);
-      if (d.run?.status === "running") {
-        lastStatusRef.current = "running";
+      if (d.run?.status === "running" || d.run?.status === "cancelling") {
+        // There's a live run we should track — bind to its id so
+        // subsequent polls are scoped to it (not some old finished row).
+        expectedRunIdRef.current = d.run.id;
+        lastStatusRef.current = d.run.status;
         if (pollRef.current) clearInterval(pollRef.current);
         pollRef.current = setInterval(poll, 1500);
       }
@@ -195,7 +215,13 @@ function InboxInner() {
   }, [user, poll]);
 
   function primeRunningState(msg: string) {
-    lastStatusRef.current = "running";
+    // Optimistic UI only — show the running banner while smart-expand
+    // and run-search are in flight. We DO NOT start polling here and
+    // DO NOT touch lastStatusRef, because pipeline-status would return
+    // whatever the most recent run is (possibly a finished one from
+    // ages ago), which would trip the "just finished" toast logic.
+    // startSearch starts polling after run-search returns with a real
+    // run_id.
     setRun({
       id: "pending",
       status: "running",
@@ -206,13 +232,12 @@ function InboxInner() {
       errors: [],
     });
     setToast({ type: "ok", msg });
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(poll, 1500);
   }
 
   function clearRunningState() {
     setRun(null);
     lastStatusRef.current = null;
+    expectedRunIdRef.current = null;
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -225,6 +250,12 @@ function InboxInner() {
     primeRunningState(`Expanding query and starting…`);
     try {
       const data = await api.runSearch(text);
+      // Bind polling to THIS run so we ignore stale rows from older runs.
+      expectedRunIdRef.current = data.run_id;
+      lastStatusRef.current = "running";
+      lastNewCasesRef.current = 0;
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(poll, 1500);
       if (data.already_running) {
         setToast({ type: "ok", msg: "A pipeline run is already in progress — re-attached." });
       } else {
