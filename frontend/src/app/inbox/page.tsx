@@ -56,6 +56,9 @@ function InboxInner() {
   // IST date string ("2026-05-29") -> total cases fetched that day (full
   // result set, not just this page). Drives the date-group badge.
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({});
+  // IST date string -> sorted list of 1-indexed page numbers containing
+  // cases of that day. Drives the "rest on pages X, Y" hint.
+  const [dailyPages, setDailyPages] = useState<Record<string, number[]>>({});
   const [page, setPage] = useState(() => Number(searchParams.get("page")) || 1);
   const [status, setStatus] = useState(() => searchParams.get("status") || "");
   const [assignedTo, setAssignedTo] = useState(() => searchParams.get("assigned_to") || "");
@@ -121,10 +124,16 @@ function InboxInner() {
     if (assignedTo) params.assigned_to = assignedTo;
     api.listCases(params)
       .then((r: unknown) => {
-        const data = r as { items: CaseListItem[]; total: number; daily_counts?: Record<string, number> };
+        const data = r as {
+          items: CaseListItem[];
+          total: number;
+          daily_counts?: Record<string, number>;
+          daily_pages?: Record<string, number[]>;
+        };
         setCases(data.items);
         setTotal(data.total);
         setDailyCounts(data.daily_counts || {});
+        setDailyPages(data.daily_pages || {});
       })
       .finally(() => setLoading(false));
     api.caseStatusCounts().then(setCounts).catch(() => {});
@@ -851,7 +860,11 @@ function InboxInner() {
               <div className="space-y-6">
                 {groups.map(group => {
                   const dayTotal = dailyCounts[group.key] ?? group.items.length;
-                  const hasMore = dayTotal > group.items.length;
+                  const visible = group.items.length;
+                  const hasMore = dayTotal > visible;
+                  // Pages (other than the current) where the rest of this
+                  // day's cases live. Lets us render clickable jump links.
+                  const otherPages = (dailyPages[group.key] || []).filter(p => p !== page);
                   return (
                   <section key={group.key}>
                     <div className="flex items-center gap-3 mb-3 px-1">
@@ -859,16 +872,29 @@ function InboxInner() {
                         {group.label}
                       </h3>
                       <span
-                        className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 tabular-nums"
+                        className="inline-flex items-center justify-center h-5 px-2 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 tabular-nums"
                         title={hasMore
-                          ? `${dayTotal} cases fetched on this day · ${group.items.length} visible on this page`
+                          ? `Showing ${visible} of ${dayTotal} cases fetched on this day`
                           : `${dayTotal} cases fetched on this day`}
                       >
-                        {dayTotal}
+                        {hasMore ? `${visible} of ${dayTotal}` : dayTotal}
                       </span>
-                      {hasMore && (
-                        <span className="text-[10px] text-slate-400" title={`Showing ${group.items.length} on this page`}>
-                          ({group.items.length} on this page)
+                      {hasMore && otherPages.length > 0 && (
+                        <span className="text-[10px] text-slate-500 inline-flex items-center gap-1 flex-wrap">
+                          <span className="text-slate-400">rest on</span>
+                          {otherPages.map((p, i) => (
+                            <span key={p} className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setPage(p)}
+                                className="font-semibold text-blue-600 hover:text-blue-800 hover:underline tabular-nums"
+                                title={`Jump to page ${p}`}
+                              >
+                                page {p}
+                              </button>
+                              {i < otherPages.length - 1 && <span className="text-slate-300">,</span>}
+                            </span>
+                          ))}
                         </span>
                       )}
                       <div className="flex-1 h-px bg-slate-200" />

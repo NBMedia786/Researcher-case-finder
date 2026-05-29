@@ -37,6 +37,11 @@ class CaseListResponse(BaseModel):
     # reflects the true "cases fetched today" count regardless of how
     # they're scattered across pages.
     daily_counts: dict[str, int] = {}
+    # IST date string -> sorted list of 1-indexed page numbers containing
+    # at least one case from that day, under the global content-score +
+    # sentencing-date sort. Lets the UI show "rest on pages 1, 3" so
+    # researchers don't have to hunt for cases scattered across pages.
+    daily_pages: dict[str, list[int]] = {}
 
 
 class CaseArticle(BaseModel):

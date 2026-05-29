@@ -99,10 +99,32 @@ def list_cases(
         if d is not None
     }
 
+    # Also compute which pages each day's cases appear on. We rank every
+    # filtered case by the same sort the list uses, then bucket into
+    # pages of `page_size`. Result lets the UI show
+    # "rest on pages 2, 4" instead of forcing the user to hunt.
+    rn_expr = func.row_number().over(
+        order_by=[Case.content_score.desc(), Case.sentencing_date.desc()]
+    ).label("rn")
+    ranked_q = db.query(day_expr.label("day"), rn_expr)
+    for f in filters:
+        ranked_q = ranked_q.filter(f)
+    daily_pages: dict[str, list[int]] = {}
+    _seen: dict[str, set[int]] = {}
+    for d, rn in ranked_q.all():
+        if d is None:
+            continue
+        iso = d.isoformat()
+        pg = ((int(rn) - 1) // page_size) + 1
+        bucket = _seen.setdefault(iso, set())
+        bucket.add(pg)
+    daily_pages = {k: sorted(v) for k, v in _seen.items()}
+
     return CaseListResponse(
         items=[_build_list_item(c, topic_name_lookup) for c in items],
         total=total, page=page, page_size=page_size,
         daily_counts=daily_counts,
+        daily_pages=daily_pages,
     )
 
 
