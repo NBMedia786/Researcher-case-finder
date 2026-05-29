@@ -117,6 +117,14 @@ def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
                 continue
             try:
                 for ia in src.fetch():
+                    # Check BEFORE processing the article — skips the
+                    # expensive Gemini call entirely once Stop is clicked.
+                    # We pay one tiny SELECT per article instead of the
+                    # old every-5 checkpoint, so cancel is near-instant.
+                    if _is_cancel_requested(db, run_id):
+                        cancelled = True
+                        db.commit()
+                        break
                     per["fetched"] += 1
                     run.total_fetched += 1
                     try:
@@ -136,13 +144,9 @@ def _run_pipeline_in_thread(run_id: str, user_id: str) -> None:
                     # reflects live progress even mid-run.
                     source.items_fetched_24h = per["fetched"]
                     source.items_extracted_24h = per["extracted"]
-                    # Commit progress every 5 articles so the UI can see it,
-                    # and check for cancellation at the same cadence.
+                    # Commit progress every 5 articles so the UI can see it.
                     if per["fetched"] % 5 == 0:
                         db.commit()
-                        if _is_cancel_requested(db, run_id):
-                            cancelled = True
-                            break  # leave the per-source fetch loop
                 if cancelled:
                     # Don't mark source as fully successful — we stopped early.
                     source.items_fetched_24h = per["fetched"]
