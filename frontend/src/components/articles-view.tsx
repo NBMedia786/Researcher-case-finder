@@ -26,6 +26,19 @@ const STATUS_BADGE: Record<ExtractionStatus, { bg: string; text: string; label: 
   pending:   { bg: "bg-amber-50",   text: "text-amber-700",   label: "Pending",  dot: "bg-amber-400" },
 };
 
+function safeHref(url: string): string {
+  // Article URLs come from third-party news APIs (Tavily, NewsAPI, GDELT…)
+  // so defensively reject anything that isn't http(s) before rendering it
+  // as a clickable href — guards against `javascript:` / `data:` injection
+  // if a malicious source ever returns one.
+  try {
+    const u = new URL(url);
+    return (u.protocol === "http:" || u.protocol === "https:") ? url : "#";
+  } catch {
+    return "#";
+  }
+}
+
 function fmtIST(iso: string | null): string {
   if (!iso) return "";
   try {
@@ -366,7 +379,7 @@ export function ArticlesView() {
                                 <span className="text-[11px] text-slate-500">{fmtIST(a.published_at || a.created_at)} IST</span>
                               </div>
                               <a
-                                href={a.url}
+                                href={safeHref(a.url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-[11px] text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1 flex-shrink-0"
