@@ -31,6 +31,12 @@ class CaseListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    # IST date string -> total number of cases (respecting current filters)
+    # fetched on that day across the WHOLE result set, not just this page.
+    # The inbox uses this to drive the per-date group badge so the badge
+    # reflects the true "cases fetched today" count regardless of how
+    # they're scattered across pages.
+    daily_counts: dict[str, int] = {}
 
 
 class CaseArticle(BaseModel):

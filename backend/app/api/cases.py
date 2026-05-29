@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func, cast, Date
 from uuid import UUID as UUID_T, UUID
 from pydantic import BaseModel as _BM
 from app.db import get_db
@@ -48,24 +48,31 @@ def list_cases(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ):
-    qry = db.query(Case)
+    # Build the filter predicate once so both the list query and the
+    # daily-counts query stay perfectly consistent (same total, same
+    # per-day breakdown).
+    filters = []
     if status:
-        qry = qry.filter(Case.status == status)
+        filters.append(Case.status == status)
     if state:
-        qry = qry.filter(Case.state == state.upper())
+        filters.append(Case.state == state.upper())
     if min_score:
-        qry = qry.filter(Case.content_score >= min_score)
+        filters.append(Case.content_score >= min_score)
     if assigned_to:
         if assigned_to == "__unassigned__":
-            qry = qry.filter(Case.assigned_to.is_(None))
+            filters.append(Case.assigned_to.is_(None))
         else:
-            qry = qry.filter(Case.assigned_to == assigned_to)
+            filters.append(Case.assigned_to == assigned_to)
     if q:
         like = f"%{q.lower()}%"
-        qry = qry.filter(or_(
+        filters.append(or_(
             Case.defendant_name.ilike(like),
             Case.summary.ilike(like),
         ))
+    qry = db.query(Case)
+    for f in filters:
+        qry = qry.filter(f)
+
     total = qry.count()
     items = (qry
              .order_by(Case.content_score.desc(), Case.sentencing_date.desc())
@@ -78,9 +85,24 @@ def list_cases(
     if topic_ids:
         for t in db.query(Topic).filter(Topic.id.in_(topic_ids)).all():
             topic_name_lookup[t.id] = t.name
+
+    # True per-IST-date counts across the entire filtered result set
+    # (not just this page). Drives the date-group badge in the inbox so
+    # researchers see the real "fetched today" total at a glance.
+    day_expr = cast(func.timezone("Asia/Kolkata", Case.created_at), Date)
+    daily_q = db.query(day_expr.label("day"), func.count(Case.id))
+    for f in filters:
+        daily_q = daily_q.filter(f)
+    daily_counts = {
+        d.isoformat(): n
+        for d, n in daily_q.group_by(day_expr).all()
+        if d is not None
+    }
+
     return CaseListResponse(
         items=[_build_list_item(c, topic_name_lookup) for c in items],
         total=total, page=page, page_size=page_size,
+        daily_counts=daily_counts,
     )
 
 

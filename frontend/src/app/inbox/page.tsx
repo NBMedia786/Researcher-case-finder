@@ -53,6 +53,9 @@ function InboxInner() {
   const [user, setUser] = useState<User | null>(null);
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [total, setTotal] = useState(0);
+  // IST date string ("2026-05-29") -> total cases fetched that day (full
+  // result set, not just this page). Drives the date-group badge.
+  const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({});
   const [page, setPage] = useState(() => Number(searchParams.get("page")) || 1);
   const [status, setStatus] = useState(() => searchParams.get("status") || "");
   const [assignedTo, setAssignedTo] = useState(() => searchParams.get("assigned_to") || "");
@@ -118,9 +121,10 @@ function InboxInner() {
     if (assignedTo) params.assigned_to = assignedTo;
     api.listCases(params)
       .then((r: unknown) => {
-        const data = r as { items: CaseListItem[]; total: number };
+        const data = r as { items: CaseListItem[]; total: number; daily_counts?: Record<string, number> };
         setCases(data.items);
         setTotal(data.total);
+        setDailyCounts(data.daily_counts || {});
       })
       .finally(() => setLoading(false));
     api.caseStatusCounts().then(setCounts).catch(() => {});
@@ -810,12 +814,19 @@ function InboxInner() {
 
             // Group cases by fetch date, then sort groups newest-first so
             // today appears at the top, then yesterday, then older days.
-            // Sort key is the UTC midnight of each case's created_at day —
-            // independent of how Intl formats the date string.
-            const groups: { key: string; label: string; sortKey: number; items: CaseListItem[] }[] = [];
+            // The ISO key ("2026-05-29" in IST) matches the backend
+            // daily_counts dict so the badge can show the true day total.
+            const isoFmt = new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Kolkata",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            });
+            type Group = { key: string; label: string; sortKey: number; items: CaseListItem[] };
+            const groups: Group[] = [];
             const lookup = new Map<string, number>();
             for (const c of cases) {
-              const key = dayFmt.format(new Date(c.created_at));
+              const key = isoFmt.format(new Date(c.created_at));  // e.g. "2026-05-29"
               let idx = lookup.get(key);
               if (idx === undefined) {
                 idx = groups.length;
@@ -824,8 +835,6 @@ function InboxInner() {
                 groups.push({
                   key,
                   label: labelFor(c.created_at),
-                  // Use the max created_at seen for this group so far —
-                  // updated below as more cases land in it.
                   sortKey: created.getTime(),
                   items: [],
                 });
@@ -840,15 +849,28 @@ function InboxInner() {
 
             return (
               <div className="space-y-6">
-                {groups.map(group => (
+                {groups.map(group => {
+                  const dayTotal = dailyCounts[group.key] ?? group.items.length;
+                  const hasMore = dayTotal > group.items.length;
+                  return (
                   <section key={group.key}>
                     <div className="flex items-center gap-3 mb-3 px-1">
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                         {group.label}
                       </h3>
-                      <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">
-                        {group.items.length}
+                      <span
+                        className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 tabular-nums"
+                        title={hasMore
+                          ? `${dayTotal} cases fetched on this day · ${group.items.length} visible on this page`
+                          : `${dayTotal} cases fetched on this day`}
+                      >
+                        {dayTotal}
                       </span>
+                      {hasMore && (
+                        <span className="text-[10px] text-slate-400" title={`Showing ${group.items.length} on this page`}>
+                          ({group.items.length} on this page)
+                        </span>
+                      )}
                       <div className="flex-1 h-px bg-slate-200" />
                     </div>
                     <div className="space-y-3">
@@ -865,7 +887,8 @@ function InboxInner() {
                       ))}
                     </div>
                   </section>
-                ))}
+                  );
+                })}
               </div>
             );
           })()}
