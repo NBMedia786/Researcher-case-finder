@@ -30,4 +30,9 @@ class Article(Base):
                                nullable=False, default="pending", index=True)
     extraction_model = Column(String, nullable=True)
     extraction_error = Column(Text, nullable=True)
+    # Which topic/search-keyword fetched this article. Lets the "Raw
+    # Articles" tab show a chip linking back to the search that surfaced
+    # it, even when extraction was rejected.
+    topic_id = Column(UUID(as_uuid=True), ForeignKey("topics.id", ondelete="SET NULL"),
+                      nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

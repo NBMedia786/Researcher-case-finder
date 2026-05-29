@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { CaseRow } from "@/components/case-row";
+import { ArticlesView } from "@/components/articles-view";
 import { api } from "@/lib/api";
 import { TEAM_MEMBERS } from "@/lib/types";
 import type { CaseListItem, Topic, User } from "@/lib/types";
@@ -23,7 +24,7 @@ const MEMBER_COLORS: Record<string, { bg: string; text: string; chip: string }> 
   Vandana:   { bg: "bg-teal-600",    text: "text-teal-700",    chip: "bg-teal-100"    },
 };
 
-type RunStatus = "running" | "completed" | "failed";
+type RunStatus = "running" | "completed" | "failed" | "cancelling" | "cancelled";
 type PipelineRun = {
   id: string;
   status: RunStatus;
@@ -68,6 +69,17 @@ function InboxInner() {
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [activeTopic, setActiveTopic] = useState<Topic | null>(null);
   const [searchText, setSearchText] = useState("");
+  // Top-level tab: "cases" = sentenced (current view), "articles" = raw pool.
+  // Persisted in URL so the tab survives refreshes / sharing links.
+  const [view, setView] = useState<"cases" | "articles">(
+    () => (searchParams.get("view") === "articles" ? "articles" : "cases")
+  );
+  const [articlePoolSize, setArticlePoolSize] = useState<number | null>(null);
+  useEffect(() => {
+    api.articleStatusCounts()
+      .then((c) => setArticlePoolSize(c.all))
+      .catch(() => {});
+  }, [run?.status]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastStatusRef = useRef<RunStatus | null>(null);
   const lastNewCasesRef = useRef<number>(0);
@@ -197,17 +209,27 @@ function InboxInner() {
   async function startSearch() {
     const text = searchText.trim();
     if (!text || isRunning) return;
-    primeRunningState(`Searching for “${text}”…`);
+    primeRunningState(`Expanding query and starting…`);
     try {
       const data = await api.runSearch(text);
       if (data.already_running) {
         setToast({ type: "ok", msg: "A pipeline run is already in progress — re-attached." });
       } else {
-        setToast({ type: "ok", msg: `✓ Running search for “${data.topic_name}”` });
+        const qs = data.queries || [];
+        // When the LLM expanded it into >1 variant, surface the variants
+        // so the researcher sees what's actually being searched.
+        const wasExpanded = data.expanded_by && data.expanded_by !== "fallback-split" && qs.length > 1;
+        const preview = qs.slice(0, 5).join(", ") + (qs.length > 5 ? `, +${qs.length - 5} more` : "");
+        setToast({
+          type: "ok",
+          msg: wasExpanded
+            ? `✨ Expanded to ${qs.length} searches: ${preview}`
+            : `✓ Running search for “${data.topic_name}”`,
+        });
       }
       refreshActiveTopic();
       poll();
-      setTimeout(() => setToast(null), 5000);
+      setTimeout(() => setToast(null), 7000);
     } catch (e: unknown) {
       clearRunningState();
       const msg = e instanceof Error ? e.message : "unknown error";
@@ -291,6 +313,25 @@ function InboxInner() {
   }
 
   const isRunning = run?.status === "running";
+  const isCancelling = run?.status === "cancelling";
+  const isActive = isRunning || isCancelling;
+
+  async function handleCancel() {
+    if (!isActive) return;
+    try {
+      await api.cancelPipeline();
+      setToast({ type: "ok", msg: "Cancellation requested — pipeline will stop at the next checkpoint" });
+      // Eagerly refresh run state so the banner flips to 'cancelling' fast.
+      api.pipelineStatus()
+        .then(r => setRun(r.run as PipelineRun))
+        .catch(() => {});
+      setTimeout(() => setToast(null), 4000);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "cancel failed";
+      setToast({ type: "err", msg: `Cancel failed: ${msg.slice(0, 200)}` });
+      setTimeout(() => setToast(null), 5000);
+    }
+  }
   const totalPages = Math.max(1, Math.ceil(total / 25));
   const assigneeCounts = counts.by_assignee || {};
   const isDraggingCase = draggingCaseId !== null;
@@ -305,125 +346,172 @@ function InboxInner() {
         </div>
       )}
 
-      {isRunning && (
-        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-4">
-          <svg className="w-5 h-5 animate-spin text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+      {isActive && (
+        <div className={
+          "mb-6 border rounded-xl p-4 flex items-center gap-4 " +
+          (isCancelling ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200")
+        }>
+          <svg className={"w-5 h-5 animate-spin flex-shrink-0 " + (isCancelling ? "text-amber-600" : "text-blue-600")} fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-blue-900">
-              Pipeline running
-              {run?.current_source && <span className="font-normal"> — currently fetching from <code className="px-1 py-0.5 rounded bg-blue-100">{run.current_source}</code></span>}
+            <div className={"text-sm font-medium " + (isCancelling ? "text-amber-900" : "text-blue-900")}>
+              {isCancelling
+                ? "Stopping pipeline — finishing current article…"
+                : (
+                  <>
+                    Pipeline running
+                    {run?.current_source && <span className="font-normal"> — currently fetching from <code className="px-1 py-0.5 rounded bg-blue-100">{run.current_source}</code></span>}
+                  </>
+                )}
             </div>
-            <div className="text-xs text-blue-700 mt-0.5">
+            <div className={"text-xs mt-0.5 " + (isCancelling ? "text-amber-700" : "text-blue-700")}>
               Fetched {run?.total_fetched ?? 0} articles · Extracted {run?.total_extracted ?? 0} · New cases {run?.total_new_cases ?? 0}
             </div>
           </div>
-          <span className="text-xs text-blue-600">Auto-refresh · safe to leave this page</span>
+          <button
+            type="button"
+            onClick={handleCancel}
+            disabled={isCancelling}
+            className={
+              "inline-flex items-center gap-1.5 text-sm font-semibold rounded-lg px-3.5 py-2 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 " +
+              (isCancelling
+                ? "bg-amber-100 text-amber-700 cursor-not-allowed"
+                : "bg-white text-rose-700 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 active:scale-95 focus:ring-rose-400 shadow-sm")
+            }
+            title={isCancelling ? "Cancellation already requested" : "Stop the pipeline after the current article"}
+          >
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+              <rect x="5" y="5" width="10" height="10" rx="1.5" />
+            </svg>
+            {isCancelling ? "Stopping…" : "Stop"}
+          </button>
         </div>
       )}
 
-      {/* Page header — name + count on the left, last-run context on the right. */}
-      <div className="flex items-end justify-between gap-4 mb-5">
-        <div>
-          <h1 className="text-[28px] leading-tight font-bold tracking-tight text-slate-900">Inbox</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            <span className="font-semibold text-slate-700">{total}</span> case{total === 1 ? "" : "s"} matching your filters
-          </p>
-        </div>
+      {/* Page header — title left, active-search context right. The case
+          count moved to the tab badge below so this row stays calm. */}
+      <header className="flex items-center justify-between gap-4 mb-6">
+        <h1 className="text-[26px] leading-none font-semibold tracking-tight text-slate-900">Inbox</h1>
         {activeTopic && (
-          <div className="hidden sm:flex flex-col items-end gap-0.5">
-            <span className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Last search</span>
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <div className="hidden sm:inline-flex items-center gap-2 text-xs">
+            <span className="text-slate-400">Active search</span>
+            <span className="inline-flex items-center gap-1.5 font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
               <span className={"w-1.5 h-1.5 rounded-full bg-emerald-500 " + (isRunning ? "animate-pulse" : "")} />
               {activeTopic.name}
-            </div>
+            </span>
           </div>
         )}
-      </div>
+      </header>
 
-      {/* Pull-new-cases search card — clearly labeled as a *fetch from the web*
-          action (different from the filter row inside the inbox card). */}
+      {/* Search-and-run — single big input + Run button. No section label;
+          the placeholder text and adjacent Run button make the purpose
+          self-evident. */}
       {user && (
-        <section className="mb-5">
-          <div className="flex items-center justify-between mb-1.5 px-0.5">
-            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold inline-flex items-center gap-1.5">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Pull new cases from the web
-            </span>
-            <span className="text-[11px] text-slate-400 hidden sm:inline">Press Enter to run</span>
-          </div>
-          <form
-            onSubmit={(e) => { e.preventDefault(); startSearch(); }}
+        <form
+          onSubmit={(e) => { e.preventDefault(); startSearch(); }}
+          className={
+            "mb-7 bg-white rounded-2xl border shadow-sm hover:shadow transition-all " +
+            "flex items-center gap-2 pl-5 pr-2 py-2 " +
+            (isRunning ? "border-blue-200 bg-blue-50/30" : "border-slate-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100")
+          }
+        >
+          <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 110-16 8 8 0 010 16z" />
+          </svg>
+          <input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            disabled={isRunning}
+            placeholder='Describe the cases you want — e.g. "body concealment murders" or "kidnap convictions in florida"'
+            className="flex-1 bg-transparent text-[15px] placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
+          />
+          <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-slate-400 mr-1">
+            <svg className="w-3 h-3 text-violet-500" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.937 15.5A2 2 0 008.5 14.063l-6.135-1.582a.5.5 0 010-.962L8.5 9.936A2 2 0 009.937 8.5l1.582-6.135a.5.5 0 01.962 0L14.063 8.5A2 2 0 0015.5 9.937l6.135 1.582a.5.5 0 010 .962L15.5 14.063a2 2 0 00-1.437 1.437l-1.582 6.135a.5.5 0 01-.962 0z" />
+            </svg>
+            Smart-expanded by Gemini
+          </span>
+          <button
+            type="submit"
+            disabled={isRunning || !searchText.trim()}
             className={
-              "bg-white rounded-2xl border shadow-sm hover:shadow transition-all " +
-              "flex items-center gap-2 pl-5 pr-2 py-2 " +
-              (isRunning ? "border-blue-200 bg-blue-50/30" : "border-slate-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100")
+              "inline-flex items-center gap-2 text-white text-sm font-semibold rounded-xl px-5 py-2.5 " +
+              "transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 " +
+              (isRunning || !searchText.trim()
+                ? "bg-slate-300 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700 active:scale-95 focus:ring-blue-500 shadow-sm hover:shadow")
             }
           >
-            <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 110-16 8 8 0 010 16z" />
-            </svg>
-            <input
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              disabled={isRunning}
-              placeholder='Type keywords — e.g. "kidnapping california" or "murder for hire texas"'
-              className="flex-1 bg-transparent text-[15px] placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={isRunning || !searchText.trim()}
-              className={
-                "inline-flex items-center gap-2 text-white text-sm font-semibold rounded-xl px-5 py-2.5 " +
-                "transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 " +
-                (isRunning || !searchText.trim()
-                  ? "bg-slate-300 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700 active:scale-95 focus:ring-blue-500 shadow-sm hover:shadow")
-              }
-            >
-              {isRunning ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Running…
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Run
-                </>
-              )}
-            </button>
-          </form>
-        </section>
+            {isRunning ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Running…
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Run
+              </>
+            )}
+          </button>
+        </form>
       )}
 
-      {/* Filter card — narrow what's already in the inbox by name, state,
-          status, and assignee. Visually grouped + clearly headed so it
-          reads as one cohesive controls area. */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mb-5 overflow-hidden">
-        {/* Filter card header — title + clear-all action */}
-        <div className="flex items-center justify-between px-5 pt-4 pb-1">
-          <div className="inline-flex items-center gap-2">
-            <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            <span className="text-[11px] uppercase tracking-widest text-slate-500 font-semibold">Filters</span>
-            {(q || state || status || assignedTo) && (
-              <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full">
-                Active
+      {/* Top-level tabs: Filtered Cases vs. Raw Articles. */}
+      <div className="flex items-center gap-1 mb-6 border-b border-slate-200">
+        {([
+          { key: "cases",    label: "Filtered Cases", count: total },
+          { key: "articles", label: "Raw Articles",   count: articlePoolSize ?? 0 },
+        ] as const).map(tab => {
+          const active = view === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setView(tab.key);
+                const next = new URLSearchParams(searchParams.toString());
+                if (tab.key === "articles") next.set("view", "articles"); else next.delete("view");
+                const qs = next.toString();
+                router.replace(qs ? `/inbox?${qs}` : "/inbox");
+              }}
+              className={
+                "relative inline-flex items-center gap-2 px-4 py-3 text-sm transition -mb-px " +
+                (active
+                  ? "text-slate-900 font-semibold border-b-2 border-slate-900"
+                  : "text-slate-500 font-medium hover:text-slate-800 border-b-2 border-transparent")
+              }
+            >
+              {tab.label}
+              <span className={
+                "inline-flex items-center justify-center min-w-[1.4rem] px-1.5 py-0.5 rounded-md text-[10px] font-semibold tabular-nums transition " +
+                (active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500")
+              }>
+                {tab.count.toLocaleString()}
               </span>
-            )}
-          </div>
-          {(q || state || status || assignedTo) && (
+            </button>
+          );
+        })}
+      </div>
+
+      {view === "articles" ? (
+        <ArticlesView />
+      ) : (
+      <>
+      {/* Filter card — narrow what's already in the inbox. Header is a
+          single quiet row with a clear-all action when any filter is set. */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mb-5 overflow-hidden">
+        {(q || state || status || assignedTo) && (
+          <div className="flex items-center justify-between px-5 pt-3 pb-0">
+            <span className="text-xs text-slate-500">
+              Filters active
+            </span>
             <button
               type="button"
               onClick={() => { setPage(1); setQ(""); setState(""); setStatus(""); setAssignedTo(""); }}
@@ -432,10 +520,10 @@ function InboxInner() {
               <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
-              Clear filters
+              Clear all
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Filter row — name search + state, each as its own pill so it's
             obvious they're separate inputs. */}
@@ -493,9 +581,9 @@ function InboxInner() {
         </div>
 
         {/* Status segmented control — sits on a tinted band so it reads as
-            a grouped control, with the section label stacked above. */}
+            a grouped control, with a quiet sentence-case label above. */}
         <div className="px-5 py-3 bg-slate-50/60 border-y border-slate-100">
-          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mb-2">Status</div>
+          <div className="text-xs text-slate-500 mb-2">Status</div>
           <div className="flex items-center gap-1.5 overflow-x-auto">
             {STATUS_TABS.map(tab => {
               const n = tab.key === "" ? (counts.all ?? 0) : (counts[tab.key] ?? 0);
@@ -531,7 +619,7 @@ function InboxInner() {
           "px-5 py-3 transition-colors " +
           (isDraggingCase ? "bg-indigo-50/40" : "")
         }>
-          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mb-2">
+          <div className="text-xs text-slate-500 mb-2">
             {isDraggingCase ? "↓ Drop on a name to assign" : "Assignee"}
           </div>
           <div className="flex items-center gap-2 overflow-x-auto">
@@ -888,6 +976,8 @@ function InboxInner() {
             </button>
           </div>
         </div>
+      )}
+      </>
       )}
     </AppShell>
   );

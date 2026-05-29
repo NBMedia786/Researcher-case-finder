@@ -31,6 +31,11 @@ def process_article(db: Session, ia: IngestedArticle, topic: Topic | None = None
         raw_text=ia.raw_text, source_name=ia.source_name,
         source_type=ia.source_type, extraction_status="pending",
     )
+    # Stamp every article with the topic that surfaced it — even rejects.
+    # The "Raw Articles" tab shows this as the search-keyword chip so
+    # researchers can see which keyword/topic pulled each article in.
+    if topic is not None:
+        article.topic_id = topic.id
     if not existing:
         db.add(article)
         db.flush()  # so article.id exists

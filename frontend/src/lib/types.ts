@@ -73,6 +73,10 @@ export interface SourceItem {
   items_fetched_24h: number;
   items_extracted_24h: number;
   consecutive_failures: number;
+  // Credential admin fields (null when source doesn't need a key).
+  key_field: string | null;          // "api_key" | "api_token"
+  key_preview: string | null;        // e.g. "••••abcd", null if not set
+  key_source: "config" | "env" | null;
 }
 
 export interface Topic {
@@ -86,4 +90,25 @@ export interface Topic {
   case_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export type ExtractionStatus = "pending" | "extracted" | "no_match" | "failed";
+
+export interface ArticleListItem {
+  id: string;
+  url: string;
+  title: string | null;
+  source_name: string;
+  source_type: string;
+  published_at: string | null;
+  created_at: string;
+  extraction_status: ExtractionStatus;
+  extraction_error: string | null;
+  case_id: string | null;
+  topic_id: string | null;
+  topic_name: string | null;
+  rejection_reason: string | null;
+  extracted_defendant_name: string | null;
+  extracted_state: string | null;
+  extracted_sentencing_date: string | null;
 }
