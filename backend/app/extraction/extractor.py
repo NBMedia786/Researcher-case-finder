@@ -1,6 +1,8 @@
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
 import vertexai
 from vertexai.generative_models import GenerativeModel, GenerationConfig
 from app.config import settings
@@ -10,6 +12,23 @@ from app.extraction.prompts import (
 )
 
 log = logging.getLogger(__name__)
+
+# vertexai 1.66's generate_content() has no timeout parameter — if the
+# SDK hangs (slow Gemini response, stuck auth refresh, network blip) the
+# worker waits forever and the whole pipeline stalls. Wrap each call in
+# a ThreadPoolExecutor.submit().result(timeout=…) so we get a hard
+# ceiling. On timeout the underlying thread leaks (it's still waiting on
+# the SDK call), which is acceptable: this only triggers on a real hang,
+# the leaked thread holds one HTTP connection's worth of resources, and
+# the next backend restart cleans it up. Without this ceiling, our
+# worker can lose hours per hang.
+_GEMINI_HARD_TIMEOUT_SECONDS = 120
+
+# Dedicated executor so a hung Gemini call doesn't block other work.
+# max_workers high enough to absorb a few simultaneous hangs without
+# starving live calls; the pipeline only ever has one Gemini call in
+# flight at a time today so 4 is plenty of headroom.
+_gemini_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="gemini")
 
 # Fallback chain — when the primary (2.5 Pro) is rate-limited or its
 # daily quota is gone, fall through to progressively cheaper / higher-
@@ -86,16 +105,38 @@ def _call_one_model(
 ) -> str:
     """Call a single model with limited in-model retries. Returns response
     text or raises. Rate-limit (429/quota) is left to the caller so it can
-    decide whether to fall back to the next model in the chain."""
+    decide whether to fall back to the next model in the chain.
+
+    Each call is bounded by _GEMINI_HARD_TIMEOUT_SECONDS via a thread
+    executor so a hung Vertex SDK call can't freeze the pipeline.
+    Timeouts are treated like rate-limit errors (cool down + try next
+    model) since "Gemini didn't respond" and "Gemini is throttling us"
+    are operationally identical.
+    """
     model = _build_model(system_prompt, model_name)
     last_err: Exception | None = None
     for attempt in range(_MODEL_RETRIES + 1):
         try:
-            resp = model.generate_content(prompt, generation_config=gen_config)
+            fut = _gemini_executor.submit(
+                model.generate_content, prompt, generation_config=gen_config
+            )
+            try:
+                resp = fut.result(timeout=_GEMINI_HARD_TIMEOUT_SECONDS)
+            except FuturesTimeoutError:
+                # Don't bother cancelling fut — the SDK call is blocking
+                # in C/gRPC and can't be interrupted. Leak the thread;
+                # process restart will reap it.
+                raise TimeoutError(
+                    f"Gemini {model_name} did not respond within "
+                    f"{_GEMINI_HARD_TIMEOUT_SECONDS}s"
+                )
             return resp.text.strip()
         except Exception as e:
             last_err = e
-            if not _is_rate_limit_error(e):
+            # Timeouts and 429s both warrant falling forward to the next
+            # model in the chain — they're not "this article is bad",
+            # they're "this model is unavailable right now".
+            if not _is_rate_limit_error(e) and not isinstance(e, TimeoutError):
                 raise
             if attempt == _MODEL_RETRIES:
                 raise
@@ -141,13 +182,17 @@ def _call_with_fallback(
             return text, model_name
         except Exception as e:
             last_err = e
-            if _is_rate_limit_error(e):
+            # Both 429s ("Gemini throttled us") and TimeoutErrors ("Gemini
+            # didn't respond at all") mean this model is unavailable
+            # right now — cool it down and fall forward.
+            if _is_rate_limit_error(e) or isinstance(e, TimeoutError):
                 _model_cooldown_until[model_name] = (
                     time.monotonic() + _MODEL_COOLDOWN_SECONDS
                 )
+                reason = "timeout" if isinstance(e, TimeoutError) else "rate-limited"
                 log.warning(
-                    "extractor: %s rate-limited, cooling down %ds, trying next: %s",
-                    model_name, _MODEL_COOLDOWN_SECONDS, str(e)[:200],
+                    "extractor: %s %s, cooling down %ds, trying next: %s",
+                    model_name, reason, _MODEL_COOLDOWN_SECONDS, str(e)[:200],
                 )
                 continue
             # Non-rate-limit error from a model — bubble up; same error is
