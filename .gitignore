@@ -46,3 +46,7 @@ ecosystem.config.mjs
 # Excel exports from export_articles.py — data dumps, not source
 backend/articles_export_*.xlsx
 articles_export_*.xlsx
+
+# One-off DB-cleanup scripts and their JSON snapshots — local, never shared.
+backend/_cleanup_*.py
+backend/_cleanup_*.json
