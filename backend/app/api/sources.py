@@ -29,6 +29,25 @@ SOURCE_KEY_FIELDS: dict[str, tuple[str, str]] = {
     "gnews":           ("api_key",   "gnews_api_key"),
 }
 
+# Where to go to manage credentials / quotas for each source. Shown as
+# an "open ↗" link on the Sources page so admins can jump to the right
+# vendor dashboard without hunting through bookmarks.
+SOURCE_HOMEPAGE: dict[str, str] = {
+    # Paid / key-gated providers
+    "newsapi":         "https://newsapi.org/account",
+    "mediastack":      "https://mediastack.com/dashboard",
+    "serpapi":         "https://serpapi.com/manage-api-key",
+    "tavily":          "https://app.tavily.com/home",
+    "courtlistener":   "https://www.courtlistener.com/profile/api/",
+    "newsdata":        "https://newsdata.io/dashboard",
+    "gnews":           "https://gnews.io/dashboard",
+    # Free / RSS / public-data providers (no key page, just docs/home)
+    "doj":             "https://www.justice.gov/news",
+    "gdelt":           "https://api.gdeltproject.org/",
+    "marshall_project":"https://www.themarshallproject.org/feeds",
+    "prnewswire":      "https://www.prnewswire.com/news-releases/",
+}
+
 
 def _mask(value: str) -> str:
     """Mask all but the last 4 characters of a credential for display."""
@@ -44,6 +63,7 @@ def _to_item(s: Source) -> SourceItem:
     """Build a SourceItem with the masked key preview + source attribution
     (whether the live key is from DB config or env fallback)."""
     item = SourceItem.model_validate(s)
+    item.homepage_url = SOURCE_HOMEPAGE.get(s.name)
     spec = SOURCE_KEY_FIELDS.get(s.name)
     if spec is None:
         return item

@@ -77,6 +77,9 @@ export interface SourceItem {
   key_field: string | null;          // "api_key" | "api_token"
   key_preview: string | null;        // e.g. "••••abcd", null if not set
   key_source: "config" | "env" | null;
+  // Vendor dashboard URL — shown as an external link next to the source
+  // name so admins can jump out to manage keys / check quotas.
+  homepage_url: string | null;
 }
 
 export interface Topic {

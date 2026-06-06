@@ -21,6 +21,10 @@ class SourceItem(BaseModel):
     key_field: Optional[str] = None
     key_preview: Optional[str] = None
     key_source: Optional[str] = None   # "config" | "env" | None
+    # Direct link to the vendor's account / dashboard page so admins
+    # can jump out to manage API keys + quota. None for sources without
+    # a meaningful homepage.
+    homepage_url: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -100,7 +100,24 @@ export default function SourcesPage() {
                   <td className="px-3 py-2.5">
                     <span className={`inline-block w-2.5 h-2.5 rounded-full ${st.color}`} title={st.label} />
                   </td>
-                  <td className="px-3 py-2.5 font-medium text-slate-900">{s.name}</td>
+                  <td className="px-3 py-2.5 font-medium text-slate-900">
+                    {s.homepage_url ? (
+                      <a
+                        href={s.homepage_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Open ${s.name} dashboard in a new tab`}
+                        className="inline-flex items-center gap-1.5 text-slate-900 hover:text-blue-700 hover:underline transition"
+                      >
+                        {s.name}
+                        <svg className="w-3 h-3 text-slate-400 group-hover:text-blue-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    ) : (
+                      s.name
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 text-slate-600">{s.type}</td>
                   <td className="px-3 py-2.5 min-w-[260px]">
                     {!s.key_field ? (
