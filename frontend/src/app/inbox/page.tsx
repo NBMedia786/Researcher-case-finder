@@ -162,9 +162,13 @@ function InboxInner() {
           lastNewCasesRef.current = data.run.total_new_cases;
           fetchCases();
         }
-        const justFinished = lastStatusRef.current === "running" && data.run.status !== "running";
+        // 'cancelling' is still live — the worker is finishing its current
+        // article. Treating it as finished stopped polling (banner stuck on
+        // "Stopping…") and fired a bogus "Pipeline failed" toast.
+        const isLive = (s: RunStatus | null) => s === "running" || s === "cancelling";
+        const justFinished = isLive(lastStatusRef.current) && !isLive(data.run.status);
         lastStatusRef.current = data.run.status;
-        if (data.run.status !== "running") {
+        if (!isLive(data.run.status)) {
           if (pollRef.current) {
             clearInterval(pollRef.current);
             pollRef.current = null;
