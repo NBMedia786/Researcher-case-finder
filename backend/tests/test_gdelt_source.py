@@ -27,3 +27,15 @@ def test_fetch_returns_articles():
     assert len(out) == 1
     assert out[0].url == "https://example.com/gdelt-article-1"
     assert out[0].source_type == "gdelt"
+
+
+def test_fetch_retries_after_rate_limit():
+    src = GdeltSource(config={"queries": ["sentenced murder"]})
+    limited = MagicMock(status_code=429)
+    ok = MagicMock(status_code=200)
+    ok.json.return_value = SAMPLE_RESPONSE
+    with patch("app.sources.gdelt.httpx.get", side_effect=[limited, ok]), \
+         patch("app.sources.gdelt.time.sleep"), \
+         patch("app.sources.gdelt.fetch_article_body", return_value=None):
+        out = list(src.fetch())
+    assert len(out) == 1
