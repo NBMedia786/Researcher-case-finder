@@ -50,3 +50,4 @@ articles_export_*.xlsx
 # One-off DB-cleanup scripts and their JSON snapshots — local, never shared.
 backend/_cleanup_*.py
 backend/_cleanup_*.json
+.dev/

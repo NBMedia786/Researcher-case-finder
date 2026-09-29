@@ -67,6 +67,11 @@ class GdeltSource(BaseSource):
                     # GDELT response times routinely hit 20-25s under load;
                     # 60s gives comfortable headroom on all phases.
                     r = httpx.get(GDELT_URL, params=params, timeout=60.0)
+                    if r.status_code == 429:
+                        # GDELT allows one request per 5s per IP; back-to-back
+                        # queries trip it, so wait and retry instead of dropping.
+                        time.sleep(6 * (attempt + 1))
+                        continue
                     if r.status_code != 200:
                         break
                     data = r.json()
